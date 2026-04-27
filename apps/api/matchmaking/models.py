@@ -1,0 +1,595 @@
+from django.db import models
+from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, MaxValueValidator
+from datetime import datetime
+import secrets
+from django.utils import timezone
+
+
+def user_profile_picture_upload_to(instance, filename):
+    extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
+    return f'user_profiles/{instance.user_id}/profile.{extension}'
+
+
+class UserProfile(models.Model):
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='astro_profile')
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True)
+    date_of_birth  = models.DateField(null=True, blank=True)
+    time_of_birth  = models.TimeField(null=True, blank=True)
+    place_of_birth = models.CharField(max_length=255, null=True, blank=True)
+    latitude       = models.FloatField(null=True, blank=True)
+    longitude      = models.FloatField(null=True, blank=True)
+    timezone       = models.CharField(max_length=50, null=True, blank=True, default='UTC')
+    profile_picture = models.ImageField(upload_to=user_profile_picture_upload_to, null=True, blank=True)
+    public_match   = models.BooleanField(default=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['gender']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username}'s profile"
+
+    def get_birth_datetime(self):
+        if not self.date_of_birth:
+            return None
+        time = self.time_of_birth or datetime.min.time()
+        return datetime.combine(self.date_of_birth, time)
+
+
+class UserMatchPreference(models.Model):
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+        ('non_binary', 'Non-binary'),
+        ('other', 'Other'),
+        ('any', 'Any'),
+    ]
+
+    RELATIONSHIP_INTENT_CHOICES = [
+        ('marriage', 'Marriage'),
+        ('long_term', 'Long-term relationship'),
+        ('casual', 'Casual dating'),
+        ('friendship', 'Friendship'),
+        ('open_to_explore', 'Open to explore'),
+    ]
+
+    MARITAL_STATUS_CHOICES = [
+        ('never_married', 'Never married'),
+        ('divorced', 'Divorced'),
+        ('widowed', 'Widowed'),
+        ('separated', 'Separated'),
+        ('annulled', 'Annulled'),
+        ('any', 'Any'),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='match_preferences')
+
+    preferred_gender = models.CharField(max_length=30, choices=GENDER_CHOICES, blank=True)
+    preferred_age_min = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MinValueValidator(18), MaxValueValidator(120)])
+    preferred_age_max = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MinValueValidator(18), MaxValueValidator(120)])
+    preferred_relationship_intent = models.CharField(max_length=30, choices=RELATIONSHIP_INTENT_CHOICES, blank=True)
+    preferred_marital_status = models.CharField(max_length=30, choices=MARITAL_STATUS_CHOICES, blank=True)
+
+    modern_methods = models.BooleanField(default=False)
+    karmic_glue = models.BooleanField(default=False)
+    ancient_methods = models.BooleanField(default=False)
+    deal_maker = models.BooleanField(default=False)
+    sizzle = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['preferred_gender']),
+            models.Index(fields=['preferred_relationship_intent']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username}'s match preferences"
+
+    @property
+    def compatibility_weights(self):
+        return {
+            'modern_methods': self.modern_methods,
+            'karmic_glue': self.karmic_glue,
+            'ancient_methods': self.ancient_methods,
+            'deal_maker': self.deal_maker,
+            'sizzle': self.sizzle,
+        }
+
+    def weighted_compatibility_score(self, scores):
+        weighted_total = 0
+        total_weight = 0
+
+        for key, weight in self.compatibility_weights.items():
+            score = scores.get(key)
+            if score is None or weight == 0:
+                continue
+            weighted_total += score * weight
+            total_weight += weight
+
+        if total_weight == 0:
+            return None
+
+        return round(weighted_total / total_weight, 2)
+
+    @property
+    def public_match_criteria(self):
+        return {
+            'gender': self.preferred_gender,
+            'age_min': self.preferred_age_min,
+            'age_max': self.preferred_age_max,
+            'relationship_intent': self.preferred_relationship_intent,
+            'marital_status': self.preferred_marital_status,
+        }
+
+    def apply_to_profiles(self, queryset=None):
+        queryset = queryset or UserProfile.objects.all()
+        queryset = queryset.exclude(user=self.user)
+        queryset = queryset.filter(public_match=True)
+
+        return queryset
+
+
+class UserMatch(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='matches')
+    matched_user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    score = models.FloatField()
+    rank = models.IntegerField()
+    created_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'matched_user')
+        ordering = ['rank', '-score']
+        indexes = [
+            models.Index(fields=['user', '-score']),
+            models.Index(fields=['user', 'rank']),
+        ]
+
+    def __str__(self):
+        return f"{self.user} matched with {self.matched_user} (rank {self.rank}, score {self.score})"
+
+
+class UserConnection(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_ACCEPTED = 'accepted'
+    STATUS_DECLINED = 'declined'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_DISCONNECTED = 'disconnected'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_ACCEPTED, 'Accepted'),
+        (STATUS_DECLINED, 'Declined'),
+        (STATUS_CANCELLED, 'Cancelled'),
+        (STATUS_DISCONNECTED, 'Disconnected'),
+    ]
+
+    requester = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='sent_connections')
+    receiver = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='received_connections')
+    profile_low = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='+')
+    profile_high = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='+')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['requester', 'status', '-updated_at'], name='matchmaking_request_78b61c_idx'),
+            models.Index(fields=['receiver', 'status', '-updated_at'], name='matchmaking_receive_1e08ef_idx'),
+            models.Index(fields=['profile_low', 'profile_high'], name='matchmaking_profile_c4cc47_idx'),
+            models.Index(fields=['status', '-updated_at'], name='matchmaking_status_47054c_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['profile_low', 'profile_high'], name='unique_user_connection_pair'),
+            models.CheckConstraint(
+                check=~models.Q(requester=models.F('receiver')),
+                name='user_connection_requester_not_receiver',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.requester_id and self.receiver_id:
+            low_id, high_id = sorted((self.requester_id, self.receiver_id))
+            self.profile_low_id = low_id
+            self.profile_high_id = high_id
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.requester} requested {self.receiver} ({self.status})"
+
+
+class ChatConversation(models.Model):
+    connection = models.OneToOneField(UserConnection, on_delete=models.CASCADE, related_name='chat_conversation')
+    user_a = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='chat_conversations_as_user_a')
+    user_b = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='chat_conversations_as_user_b')
+    last_message = models.ForeignKey(
+        'ChatMessage',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    last_message_at = models.DateTimeField(null=True, blank=True)
+    user_a_last_read_message = models.ForeignKey(
+        'ChatMessage',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    user_b_last_read_message = models.ForeignKey(
+        'ChatMessage',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    user_a_unread_count = models.PositiveIntegerField(default=0)
+    user_b_unread_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-last_message_at', '-updated_at']
+        indexes = [
+            models.Index(fields=['user_a', '-last_message_at'], name='matchmaking_user_a__b2bdec_idx'),
+            models.Index(fields=['user_b', '-last_message_at'], name='matchmaking_user_b__a9ecbd_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(user_a=models.F('user_b')),
+                name='chat_conversation_distinct_users',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.connection_id and not (self.user_a_id and self.user_b_id):
+            self.user_a_id = self.connection.profile_low_id
+            self.user_b_id = self.connection.profile_high_id
+        super().save(*args, **kwargs)
+
+    def includes_profile(self, profile):
+        return profile and profile.id in (self.user_a_id, self.user_b_id)
+
+    def other_profile(self, profile):
+        if profile.id == self.user_a_id:
+            return self.user_b
+        if profile.id == self.user_b_id:
+            return self.user_a
+        return None
+
+    def unread_count_for(self, profile):
+        if profile.id == self.user_a_id:
+            return self.user_a_unread_count
+        if profile.id == self.user_b_id:
+            return self.user_b_unread_count
+        return 0
+
+    def __str__(self):
+        return f"Chat for connection {self.connection_id}"
+
+
+class ChatMessage(models.Model):
+    conversation = models.ForeignKey(ChatConversation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='sent_chat_messages')
+    receiver = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='received_chat_messages')
+    body = models.TextField()
+    client_message_id = models.CharField(max_length=64, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['conversation', '-created_at', '-id'], name='matchmaking_convers_ee2874_idx'),
+            models.Index(fields=['sender', 'client_message_id'], name='matchmaking_sender__c3f202_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['sender', 'client_message_id'], name='unique_chat_client_message'),
+            models.CheckConstraint(
+                check=~models.Q(sender=models.F('receiver')),
+                name='chat_message_sender_not_receiver',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Message {self.id} in conversation {self.conversation_id}"
+
+
+class PrivatePerson(models.Model):
+    owner          = models.ForeignKey(User, on_delete=models.CASCADE, related_name='private_persons')
+    name           = models.CharField(max_length=255)
+    nickname       = models.CharField(max_length=100, blank=True)
+    notes          = models.TextField(blank=True)
+    date_of_birth  = models.DateField()
+    time_of_birth  = models.TimeField(null=True, blank=True)
+    place_of_birth = models.CharField(max_length=255, blank=True)
+    latitude       = models.FloatField(null=True, blank=True)
+    longitude      = models.FloatField(null=True, blank=True)
+    timezone       = models.CharField(max_length=50, default='UTC')
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('owner', 'name')
+        indexes = [models.Index(fields=['owner'])]
+
+    def __str__(self):
+        return f"{self.name} (private, owner: {self.owner.username})"
+
+    def get_birth_datetime(self):
+        time = self.time_of_birth or datetime.min.time()
+        return datetime.combine(self.date_of_birth, time)
+
+
+class CompatibilityScore(models.Model):
+    user                   = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='compatibility_checks')
+    matched_user           = models.ForeignKey(UserProfile, on_delete=models.CASCADE, null=True, blank=True, related_name='matched_against')
+    matched_private_person = models.ForeignKey(PrivatePerson, on_delete=models.CASCADE, null=True, blank=True, related_name='compatibility_checks')
+    is_paid                = models.BooleanField(default=False)
+    overall_score          = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(100)])
+    compatibility          = models.FloatField(null=True, blank=True)
+    durability             = models.FloatField(null=True, blank=True)
+    chemistry              = models.FloatField(null=True, blank=True)
+    sizzle                 = models.FloatField(null=True, blank=True)
+    destiny                = models.FloatField(null=True, blank=True)
+    friendship             = models.FloatField(null=True, blank=True)
+    waity                  = models.FloatField(null=True, blank=True)
+    description            = models.TextField(blank=True)
+    api_response           = models.JSONField(null=True, blank=True)
+    created_at             = models.DateTimeField(auto_now_add=True)
+    updated_at             = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user']), models.Index(fields=['overall_score'])]
+        constraints = [
+            models.CheckConstraint(
+                name='one_match_target_required',
+                check=(
+                    models.Q(matched_user__isnull=False, matched_private_person__isnull=True) |
+                    models.Q(matched_user__isnull=True,  matched_private_person__isnull=False)
+                )
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} vs {self.get_match_target()} ({self.overall_score}%)"
+
+    def get_match_target(self):
+        return self.matched_user or self.matched_private_person
+
+    def is_private_match(self):
+        return self.matched_private_person is not None
+    
+
+class CompatibilityTransaction(models.Model):
+    CREDIT_TYPE_CHOICES = [
+        ('free', 'Free'),
+        ('paid', 'Paid'),
+    ]
+
+    user                   = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='compatibility_transactions')
+    matched_user           = models.ForeignKey(UserProfile, on_delete=models.CASCADE, null=True, blank=True, related_name='compatibility_transaction_matches')
+    matched_private_person = models.ForeignKey(PrivatePerson, on_delete=models.CASCADE, null=True, blank=True, related_name='compatibility_transactions')
+    compatibility_score    = models.ForeignKey(CompatibilityScore, on_delete=models.CASCADE, related_name='transactions')
+    credit_type            = models.CharField(max_length=10, choices=CREDIT_TYPE_CHOICES)
+    is_paid                = models.BooleanField(default=False)
+    overall_score          = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(100)])
+    credits_remaining_after = models.PositiveIntegerField(default=0)
+    description            = models.TextField(blank=True)
+    api_response           = models.JSONField(null=True, blank=True)
+    created_at             = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['compatibility_score']),
+            models.Index(fields=['created_at']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                name='one_transaction_target_required',
+                check=(
+                    models.Q(matched_user__isnull=False, matched_private_person__isnull=True) |
+                    models.Q(matched_user__isnull=True,  matched_private_person__isnull=False)
+                )
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} checked {self.get_match_target()} using {self.credit_type} credit"
+
+    def get_match_target(self):
+        return self.matched_user or self.matched_private_person
+
+
+class CompatibilityParameter(models.Model):
+    """
+    Admin defines each compatibility parameter and whether it is free or paid.
+    e.g. sun=free, moon=free, venus=paid, mars=paid, jupiter=paid ...
+    """
+    key        = models.CharField(max_length=50, unique=True,
+                     help_text="Matches the key in the astrology API response e.g. 'sun_compatibility'")
+    label      = models.CharField(max_length=100,
+                     help_text="Human readable label e.g. 'Sun Compatibility'")
+    is_free    = models.BooleanField(default=False,
+                     help_text="Free users can see this parameter")
+    order      = models.PositiveIntegerField(default=0,
+                     help_text="Display order in the response")
+    is_active  = models.BooleanField(default=True,
+                     help_text="Inactive parameters are excluded from responses")
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        tier = "FREE" if self.is_free else "PAID"
+        return f"[{tier}] {self.label} ({self.key})"
+
+
+class FeatureFlag(models.Model):
+    """
+    Admin controls global platform settings.
+    Only one row should exist — use the singleton pattern.
+    """
+    initial_free_credits    = models.PositiveIntegerField(default=5,
+                                 help_text="Free credits given to every new user on registration")
+    paid_credit_price_usd   = models.DecimalField(max_digits=6, decimal_places=2, default=1.00,
+                                 help_text="Price in USD per paid credit")
+    credits_per_purchase    = models.PositiveIntegerField(default=10,
+                                 help_text="How many paid credits the user gets per purchase")
+    updated_at              = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Feature Flag"
+
+    def __str__(self):
+        return f"Platform config (free credits: {self.initial_free_credits}, price: ${self.paid_credit_price_usd})"
+
+    @classmethod
+    def get(cls):
+        """Always returns the single config row, creating it if missing."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class UserPlan(models.Model):
+    """
+    Credit wallet for each user.
+    free_credits  — given on registration, unlocks free parameters only
+    paid_credits  — purchased, unlocks all parameters
+    Checks consume paid_credits first, then free_credits.
+    """
+    user          = models.OneToOneField(User, on_delete=models.CASCADE, related_name='plan')
+    free_credits  = models.PositiveIntegerField(default=0)
+    paid_credits  = models.PositiveIntegerField(default=0)
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} — free: {self.free_credits}, paid: {self.paid_credits}"
+
+    @property
+    def total_credits(self):
+        return self.free_credits + self.paid_credits
+
+    @property
+    def is_paid_session(self):
+        """True if the next check will use a paid credit."""
+        return self.paid_credits > 0
+
+    def consume_credit(self):
+        """
+        Deduct one credit. Paid credits are consumed first.
+        Returns 'paid' or 'free' to indicate which was used.
+        Raises ValueError if no credits remain.
+        """
+        if self.paid_credits > 0:
+            self.paid_credits -= 1
+            self.save(update_fields=['paid_credits', 'updated_at'])
+            return 'paid'
+        elif self.free_credits > 0:
+            self.free_credits -= 1
+            self.save(update_fields=['free_credits', 'updated_at'])
+            return 'free'
+        else:
+            raise ValueError("No credits remaining")
+
+    def add_paid_credits(self, amount):
+        self.paid_credits += amount
+        self.save(update_fields=['paid_credits', 'updated_at'])
+
+
+class PaymentRecord(models.Model):
+    """
+    Logs every credit purchase. One-time payment per transaction.
+    In production, store the payment gateway reference here.
+    """
+    STATUS_CHOICES = [
+        ('pending',   'Pending'),
+        ('completed', 'Completed'),
+        ('failed',    'Failed'),
+        ('refunded',  'Refunded'),
+    ]
+
+    user              = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payments')
+    amount_usd        = models.DecimalField(max_digits=8, decimal_places=2)
+    credits_purchased = models.PositiveIntegerField()
+    status            = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    payment_reference = models.CharField(max_length=255, blank=True,
+                            help_text="Payment gateway transaction ID e.g. Stripe charge ID")
+    created_at        = models.DateTimeField(auto_now_add=True)
+    completed_at      = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} — ${self.amount_usd} — {self.status}"
+
+
+class AuthActionToken(models.Model):
+    PURPOSE_EMAIL_VERIFICATION = 'email_verification'
+    PURPOSE_PASSWORD_RESET = 'password_reset'
+    PURPOSE_CHOICES = [
+        (PURPOSE_EMAIL_VERIFICATION, 'Email Verification'),
+        (PURPOSE_PASSWORD_RESET, 'Password Reset'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='auth_action_tokens')
+    purpose = models.CharField(max_length=32, choices=PURPOSE_CHOICES)
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'purpose'], name='matchmaking_user_id_6856b8_idx'),
+            models.Index(fields=['purpose', 'expires_at'], name='matchmaking_purpose_0bf478_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.purpose}"
+
+    @property
+    def is_expired(self):
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_usable(self):
+        return self.used_at is None and not self.is_expired
+
+    def mark_used(self):
+        if self.used_at is None:
+            self.used_at = timezone.now()
+            self.save(update_fields=['used_at'])
+
+    @classmethod
+    def issue_token(cls, user, purpose, lifetime):
+        cls.objects.filter(user=user, purpose=purpose, used_at__isnull=True).delete()
+        return cls.objects.create(
+            user=user,
+            purpose=purpose,
+            token=secrets.token_urlsafe(32),
+            expires_at=timezone.now() + lifetime,
+        )

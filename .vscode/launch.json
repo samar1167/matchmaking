@@ -1,0 +1,60 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Django: Local manage.py",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/api/manage.py",
+      "args": [
+        "runserver",
+        "0.0.0.0:8001"
+      ],
+      "cwd": "${workspaceFolder}/apps/api",
+      "django": true,
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/apps/api/.env",
+      "env": {
+        "DJANGO_SETTINGS_MODULE": "config.settings",
+        "DEBUG": "True",
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "3306",
+        "REDIS_URL": ""
+      }
+    },
+    {
+      "name": "Django: Attach to Docker",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/apps/api",
+          "remoteRoot": "/app"
+        }
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "Python: Current File (Django context)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}/apps/api",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/apps/api/.env",
+      "env": {
+        "DJANGO_SETTINGS_MODULE": "config.settings",
+        "DEBUG": "True",
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "3306",
+        "REDIS_URL": "",
+        "PYTHONPATH": "${workspaceFolder}/apps/api"
+      }
+    }
+  ]
+}
