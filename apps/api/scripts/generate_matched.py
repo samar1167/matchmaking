@@ -230,7 +230,7 @@ def generate_matches_for_user(user_profile, top_n=50):
                 )
             )
 
-        UserMatch.objects.bulk_create(bulk)
+        UserMatch.objects.bulk_create(bulk, ignore_conflicts=True)
 
 
 # -----------------------------
@@ -238,6 +238,10 @@ def generate_matches_for_user(user_profile, top_n=50):
 # -----------------------------
 def run(batch_size=200, top_n=50):
     print("Starting match generation...")
+
+    #Clear existing matches
+    UserMatch.objects.all().delete()
+    print(f"Cleared existing matches")
 
     qs = UserProfile.objects.select_related(
         "user",

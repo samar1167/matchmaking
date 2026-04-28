@@ -4,6 +4,10 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 import { SiteFooter } from "@/components/layout/site-footer";
 import {
+  isMissingProfileError,
+  MissingProfileMessage,
+} from "@/components/profile/missing-profile-message";
+import {
   CompatibilityScoreLine,
   getCompatibilityCategory,
   getScoreOnTen,
@@ -14,6 +18,7 @@ import { compatibilityService } from "@/services/compatibilityService";
 import { normalizeCompatibilityResults } from "@/services/compatibilityMapper";
 import { planService } from "@/services/planService";
 import { privatePersonsService } from "@/services/privatePersonsService";
+import { profileService } from "@/services/profileService";
 import { useAuthStore } from "@/store/authStore";
 import type { StoredCompatibilityResult } from "@/store/resultsStore";
 import type { PlanMeResponse, PlanParameters } from "@/types/plan";
@@ -184,7 +189,7 @@ function RecentAnalysisRow({
 function DashboardPanel({
   title,
   action,
-  actionHref = "/results",
+  actionHref = "/top-scores",
   children,
 }: {
   title: string;
@@ -449,13 +454,24 @@ export function DashboardOverview() {
   const [purchaseMessage, setPurchaseMessage] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ReactNode | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
         setIsLoading(true);
         setError(null);
+        const profileResponse = await profileService.getMe();
+        const profile = profileResponse.results?.[0] ?? null;
+
+        if (!profile) {
+          setHistory([]);
+          setTopMatches([]);
+          setPrivatePersons([]);
+          setPlanSummary(null);
+          setError(<MissingProfileMessage destination="get the best experience" />);
+          return;
+        }
 
         const [
           historyResponse,
@@ -493,8 +509,16 @@ export function DashboardOverview() {
         ) {
           setError("Unable to load dashboard insights right now.");
         }
-      } catch {
-        setError("Unable to load dashboard insights right now.");
+      } catch (error) {
+        if (isMissingProfileError(error)) {
+          setHistory([]);
+          setTopMatches([]);
+          setPrivatePersons([]);
+          setPlanSummary(null);
+          setError(<MissingProfileMessage destination="get the best experience" />);
+        } else {
+          setError("Unable to load dashboard insights right now.");
+        }
       } finally {
         setIsLoading(false);
       }
@@ -542,8 +566,6 @@ export function DashboardOverview() {
   return (
     <main className="min-h-screen bg-[#fffafa] text-[#2d1718]">
       <div className="mx-auto max-w-7xl px-8 py-8">
-        {error ? <DashboardAlert>{error}</DashboardAlert> : null}
-
         <section className="grid overflow-hidden rounded-xl border border-[#EABFB9] bg-[#fdf1f0] lg:grid-cols-[1fr_0.95fr]">
           <div className="p-10">
             <h1 className="font-display text-5xl font-bold leading-tight text-[#2d1718]">
@@ -564,6 +586,12 @@ export function DashboardOverview() {
           </div>
           <DashboardIllustration />
         </section>
+
+        {error ? (
+          <div className="mt-6">
+            <DashboardAlert>{error}</DashboardAlert>
+          </div>
+        ) : null}
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.9fr)]">
           <div className="grid gap-6">

@@ -7,6 +7,10 @@ import { useEffect, useMemo, useState } from "react";
 import { ChatDialog } from "@/components/chat/chat-dialog";
 import { SiteFooter } from "@/components/layout/site-footer";
 import {
+  isMissingProfileError,
+  MissingProfileMessage,
+} from "@/components/profile/missing-profile-message";
+import {
   CompatibilityScoreLine,
   getCompatibilityCategory,
   getScoreOnTen,
@@ -933,7 +937,7 @@ export function ConnectionsManager() {
     Record<string, StoredCompatibilityResult>
   >({});
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<React.ReactNode>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -967,19 +971,43 @@ export function ConnectionsManager() {
       try {
         setIsLoading(true);
         setLoadError(null);
+        const profileResponse = await profileService.getMe();
+        const profile = profileResponse.results?.[0] ?? null;
 
-        const [profileResponse, userMatchesResponse, historyResponse] = await Promise.all([
-          profileService.getMe(),
+        if (!profile) {
+          setCurrentProfile(null);
+          setConnections([]);
+          setReceivedRequests([]);
+          setSentRequests([]);
+          setUserMatches([]);
+          setCompatibilityScoresByProfile({});
+          setLoadError(<MissingProfileMessage destination="use connections" />);
+          return;
+        }
+
+        const [userMatchesResponse, historyResponse] = await Promise.all([
           userMatchService.list(),
           compatibilityService.history().catch(() => ({ results: [] })),
           refreshConnections(),
         ]);
 
-        setCurrentProfile(profileResponse.results?.[0] ?? null);
+        setCurrentProfile(profile);
         setUserMatches(userMatchesResponse.results ?? []);
         setCompatibilityScoresByProfile(buildCompatibilityScoresByProfile(historyResponse));
-      } catch {
-        setLoadError("Unable to load connections right now.");
+      } catch (error) {
+        if (isMissingProfileError(error)) {
+          setCurrentProfile(null);
+          setConnections([]);
+          setReceivedRequests([]);
+          setSentRequests([]);
+          setUserMatches([]);
+          setCompatibilityScoresByProfile({});
+          setLoadError(<MissingProfileMessage destination="use connections" />);
+        } else {
+          setLoadError(
+            "Unable to load connections right now. Ensure your profile is complete and try again.",
+          );
+        }
       } finally {
         setIsLoading(false);
       }
@@ -1274,7 +1302,7 @@ export function ConnectionsManager() {
           title=""
           description={
             <>
-              Suggestions are based on your Match Connection preferences.{" "}
+              Suggestions are based on your Match preferences.{" "}
               <Link
                 className="font-bold text-[#901214] underline-offset-4 transition hover:underline"
                 href="/profile#match-preference"

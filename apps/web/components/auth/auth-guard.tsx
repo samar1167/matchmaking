@@ -12,7 +12,6 @@ const publicRoutes = new Set([
   "/forgot-password",
   "/reset-password",
   "/verify-email",
-  "/auth/verify-email",
 ]);
 
 export function AuthGuard({ children }: { children: ReactNode }) {
@@ -39,8 +38,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
         pathname === "/register" ||
         pathname === "/forgot-password" ||
         pathname === "/reset-password" ||
-        pathname === "/verify-email" ||
-        pathname === "/auth/verify-email")
+        pathname === "/verify-email")
     ) {
       router.replace("/dashboard");
     }

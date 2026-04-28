@@ -4,7 +4,7 @@ import type {
   UserMatchPreference,
 } from "@/types/match-preferences";
 
-const MATCH_PREFERENCES_ENDPOINT = "/match-preferences/me";
+const MATCH_PREFERENCES_ENDPOINT = "/match-preferences/me/";
 
 const isMatchPreference = (value: unknown): value is UserMatchPreference =>
   typeof value === "object" && value !== null && "id" in value;
