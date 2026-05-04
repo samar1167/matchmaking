@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { FooterInfoPageContent } from "@/components/site-info/footer-link-content";
 import { SiteFooter } from "@/components/layout/site-footer";
 
@@ -82,29 +81,6 @@ export function FooterLinkPage({
           {content.sections.map((section) => (
             <InfoSectionCard key={section.title} {...section} />
           ))}
-
-          <section className="overflow-hidden rounded-xl bg-[#A22E34] px-8 py-6 text-white">
-            <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#EABFB9]">
-                  Sample destination
-                </p>
-                <h2 className="mt-3 font-display text-3xl font-bold">
-                  Footer pages now have styled placeholders
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/85">
-                  These routes can now be replaced with final product, legal, or support copy
-                  without changing the page structure again.
-                </p>
-              </div>
-              <Link
-                href="/?view=public"
-                className="inline-flex min-h-12 items-center justify-center rounded-md bg-[#fafafa] px-6 text-sm font-bold text-[#0c0d0a] transition hover:bg-[#eabfb9]"
-              >
-                Return Home
-              </Link>
-            </div>
-          </section>
         </div>
       </main>
       <SiteFooter />

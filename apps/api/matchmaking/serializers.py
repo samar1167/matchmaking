@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from .astrology_service import AstrologyService
 from .models import (
     UserProfile, UserMatchPreference, UserMatch, UserConnection, PrivatePerson, CompatibilityScore, CompatibilityParameter,
     PaymentRecord, UserPlan, AuthActionToken, ChatConversation, ChatMessage,
@@ -194,6 +195,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'first_name': validated_data.pop('first_name', None),
             'last_name': validated_data.pop('last_name', None),
         }
+        self._set_timezone(validated_data)
         profile = UserProfile.objects.create(**validated_data)
         self._update_user(profile.user, user_data)
         return profile
@@ -205,7 +207,27 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if 'last_name' in validated_data:
             user_data['last_name'] = validated_data.pop('last_name')
         self._update_user(instance.user, user_data)
+        self._set_timezone(validated_data, instance=instance)
         return super().update(instance, validated_data)
+
+    def _set_timezone(self, validated_data, instance=None):
+        latitude = validated_data.get('latitude')
+        longitude = validated_data.get('longitude')
+        fallback_timezone = validated_data.get('timezone')
+
+        if instance is not None:
+            if latitude is None:
+                latitude = instance.latitude
+            if longitude is None:
+                longitude = instance.longitude
+            if fallback_timezone is None:
+                fallback_timezone = instance.timezone
+
+        validated_data['timezone'] = AstrologyService._get_timezone_name(
+            latitude=latitude,
+            longitude=longitude,
+            fallback_timezone=fallback_timezone,
+        )
 
     def _update_user(self, user, user_data):
         changed_fields = []
@@ -409,6 +431,33 @@ class PrivatePersonSerializer(serializers.ModelSerializer):
         model = PrivatePerson
         fields = ('id', 'name', 'nickname', 'notes', 'date_of_birth', 'time_of_birth', 'place_of_birth', 'latitude', 'longitude', 'timezone', 'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at')
+
+    def create(self, validated_data):
+        self._set_timezone(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        self._set_timezone(validated_data, instance=instance)
+        return super().update(instance, validated_data)
+
+    def _set_timezone(self, validated_data, instance=None):
+        latitude = validated_data.get('latitude')
+        longitude = validated_data.get('longitude')
+        fallback_timezone = validated_data.get('timezone')
+
+        if instance is not None:
+            if latitude is None:
+                latitude = instance.latitude
+            if longitude is None:
+                longitude = instance.longitude
+            if fallback_timezone is None:
+                fallback_timezone = instance.timezone
+
+        validated_data['timezone'] = AstrologyService._get_timezone_name(
+            latitude=latitude,
+            longitude=longitude,
+            fallback_timezone=fallback_timezone,
+        )
         
 
 class CompatibilityRequestSerializer(serializers.Serializer):

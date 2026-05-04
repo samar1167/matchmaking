@@ -346,7 +346,11 @@ export function PublicLandingPage() {
             <span className="hidden text-3xl text-[#A22E34] md:block">→</span>
             <StepCard icon="2" title="Get Compatibility Breakdown" copy="We analyze across multiple dimensions that truly matter." />
             <span className="hidden text-3xl text-[#A22E34] md:block">→</span>
-            <StepCard icon="3" title="Decide with Clarity" copy="Understand what will work, what won’t, and why." />
+            <StepCard
+              icon="3"
+              title="Make a Connection"
+              copy="See the possibility of finding a matching person and take the next step with confidence."
+            />
           </div>
         </div>
       </section>

@@ -1,6 +1,5 @@
-import { FooterLinkPage } from "@/components/site-info/footer-link-page";
-import { footerInfoPages } from "@/components/site-info/footer-link-content";
+import { ContactUsManager } from "@/components/site-info/contact-us-manager";
 
 export default function ContactUsPage() {
-  return <FooterLinkPage content={footerInfoPages["contact-us"]} />;
+  return <ContactUsManager />;
 }
