@@ -405,6 +405,134 @@ function CompatibilityDetailsDialog({
   );
 }
 
+function CreditUseHistoryDialog({
+  currentPage,
+  history,
+  onClose,
+  onOpenDetails,
+  onPageChange,
+}: {
+  currentPage: number;
+  history: StoredCompatibilityResult[];
+  onClose: () => void;
+  onOpenDetails: (result: StoredCompatibilityResult) => void;
+  onPageChange: (page: number) => void;
+}) {
+  const pageSize = 5;
+  const totalPages = Math.max(1, Math.ceil(history.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const paginatedHistory = history.slice(startIndex, startIndex + pageSize);
+
+  return (
+    <div
+      aria-modal="true"
+      className="fixed inset-0 z-50 grid place-items-center bg-[#2d1718]/50 px-4 py-6"
+      role="dialog"
+    >
+      <div className="max-h-[88vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[#EABFB9] bg-[#fafafa] p-6 shadow-[0_24px_80px_rgba(45,23,24,0.28)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#A22E34]">
+              Credit Use History
+            </p>
+            <h2 className="mt-2 font-display text-3xl font-bold text-[#2d1718]">
+              Compatibility Check History
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#2d1718]/70">
+              Review the compatibility checks that used your credits.
+            </p>
+          </div>
+          <button
+            aria-label="Close credit use history"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#C07771] bg-[#fafafa] text-xl font-bold text-[#901214] transition hover:border-[#901214]"
+            type="button"
+            onClick={onClose}
+          >
+            x
+          </button>
+        </div>
+
+        {history.length > 0 ? (
+          <>
+            <div className="mt-6 overflow-hidden rounded-xl border border-[#EABFB9] bg-[#fffafa]">
+              <div className="grid grid-cols-[minmax(0,1.4fr)_auto_auto_auto] gap-4 border-b border-[#EABFB9] bg-[#fdf1f0] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em] text-[#7F533E]">
+                <p>Match</p>
+                <p className="text-right">Score</p>
+                <p className="text-right">Checked On</p>
+                <p className="text-right">Details</p>
+              </div>
+              <div className="divide-y divide-[#EABFB9]">
+                {paginatedHistory.map((result) => (
+                  <div
+                    key={result.id}
+                    className="grid grid-cols-[minmax(0,1.4fr)_auto_auto_auto] items-center gap-4 px-5 py-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-[#2d1718]">
+                        You & {result.personName}
+                      </p>
+                      <p className="mt-1 text-xs text-[#2d1718]/65">
+                        {result.matchType === "private"
+                          ? "Private compatibility check"
+                          : "Public compatibility check"}
+                      </p>
+                    </div>
+                    <p className={`text-right text-sm font-bold ${getScoreTone(result.score)}`}>
+                      {Math.round(result.score)}%
+                    </p>
+                    <p className="text-right text-sm text-[#2d1718]/72">
+                      {formatDate(result.createdAt)}
+                    </p>
+                    <div className="flex justify-end">
+                      <ResultDetailsButton
+                        label={`View compatibility details for ${result.personName}`}
+                        onClick={() => onOpenDetails(result)}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-[#2d1718]/70">
+                Showing {startIndex + 1}-{Math.min(startIndex + pageSize, history.length)} of{" "}
+                {history.length} checks
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  className="inline-flex min-h-10 items-center justify-center rounded-md border border-[#C07771] bg-[#fafafa] px-4 text-sm font-bold text-[#901214] transition hover:border-[#901214] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={safePage === 1}
+                  type="button"
+                  onClick={() => onPageChange(safePage - 1)}
+                >
+                  Previous
+                </button>
+                <p className="text-sm font-semibold text-[#2d1718]">
+                  Page {safePage} of {totalPages}
+                </p>
+                <button
+                  className="inline-flex min-h-10 items-center justify-center rounded-md border border-[#C07771] bg-[#fafafa] px-4 text-sm font-bold text-[#901214] transition hover:border-[#901214] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={safePage === totalPages}
+                  type="button"
+                  onClick={() => onPageChange(safePage + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-6 rounded-xl border border-dashed border-[#C07771] bg-[#fffafa] p-6 text-sm leading-6 text-[#2d1718]/65">
+            No compatibility checks found yet. Once you run checks, they will appear here.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ResultDetailsButton({
   label,
   onClick,
@@ -461,6 +589,8 @@ export function DashboardOverview() {
   const [privatePersons, setPrivatePersons] = useState<PrivatePerson[]>([]);
   const [planSummary, setPlanSummary] = useState<PlanMeResponse | null>(null);
   const [selectedResult, setSelectedResult] = useState<StoredCompatibilityResult | null>(null);
+  const [isCreditUseHistoryOpen, setIsCreditUseHistoryOpen] = useState(false);
+  const [creditUseHistoryPage, setCreditUseHistoryPage] = useState(1);
   const [isPurchasingCredits, setIsPurchasingCredits] = useState(false);
   const [purchaseMessage, setPurchaseMessage] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
@@ -615,6 +745,15 @@ export function DashboardOverview() {
   const recentAnalyses = history.slice(0, 3);
   const topCompatiblePeople = (topMatches.length > 0 ? topMatches : history).slice(0, 3);
   const matchesFound = history.filter((result) => result.score >= 50).length;
+
+  const openCreditUseHistory = () => {
+    setCreditUseHistoryPage(1);
+    setIsCreditUseHistoryOpen(true);
+  };
+
+  const closeCreditUseHistory = () => {
+    setIsCreditUseHistoryOpen(false);
+  };
 
   const handlePurchaseCredits = async () => {
     try {
@@ -796,6 +935,13 @@ export function DashboardOverview() {
                   ? "Redirecting to Stripe..."
                   : `Buy ${creditsPerPurchase} Credits`}
               </button>
+              <button
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-[#C07771] bg-[#fafafa] px-5 text-sm font-bold text-[#901214] transition hover:border-[#901214]"
+                type="button"
+                onClick={openCreditUseHistory}
+              >
+                Credit Use History
+              </button>
               <Link
                 href="/payment-history"
                 className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-[#C07771] bg-[#fafafa] px-5 text-sm font-bold text-[#901214] transition hover:border-[#901214]"
@@ -834,6 +980,19 @@ export function DashboardOverview() {
           onClose={() => setSelectedResult(null)}
           parameters={parameters}
           result={selectedResult}
+        />
+      ) : null}
+
+      {isCreditUseHistoryOpen ? (
+        <CreditUseHistoryDialog
+          currentPage={creditUseHistoryPage}
+          history={history}
+          onClose={closeCreditUseHistory}
+          onOpenDetails={(result) => {
+            setSelectedResult(result);
+            closeCreditUseHistory();
+          }}
+          onPageChange={setCreditUseHistoryPage}
         />
       ) : null}
     </main>
