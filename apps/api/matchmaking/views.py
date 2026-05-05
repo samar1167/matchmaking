@@ -1,3 +1,6 @@
+from django.core.exceptions import ImproperlyConfigured
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -21,10 +24,21 @@ from .serializers import (
     CompatibilityScoreSerializer, CompatibilityRequestSerializer,
     ChatConversationSerializer, ChatMessageSerializer, ChatMessageCreateSerializer,
 )
-from .serializers import (PurchaseCreditsSerializer, PaymentRecordSerializer, CompatibilityParameterSerializer)
+from .serializers import (
+    CheckoutSessionConfirmSerializer,
+    PaymentRecordSerializer,
+    CompatibilityParameterSerializer,
+    PurchaseCreditsSerializer,
+)
 from .serializers import EmailTokenObtainPairSerializer
 from .serializers import VerifyEmailSerializer, EmailAddressSerializer, ResetPasswordSerializer
 from .astrology_service import AstrologyService
+from .stripe import (
+    finalize_checkout_session,
+    get_checkout_urls,
+    get_stripe_client,
+    mark_payment_record_failed,
+)
 import logging
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -807,37 +821,129 @@ class PlanViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def purchase(self, request):
-        """
-        Record a credit purchase after payment is confirmed.
-        In production: verify the payment_reference with your
-        payment gateway (Stripe, Razorpay, etc.) before adding credits.
-        """
-        serializer = PurchaseCreditsSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
         config = FeatureFlag.get()
-        plan, _ = UserPlan.objects.get_or_create(user=request.user)
 
-        # Record the payment
-        payment = PaymentRecord.objects.create(
-            user=request.user,
-            amount_usd=config.paid_credit_price_usd * config.credits_per_purchase,
-            credits_purchased=config.credits_per_purchase,
-            status='completed',
-            payment_reference=serializer.validated_data['payment_reference'],
-            completed_at=timezone.now(),
+        if request.data.get('payment_reference'):
+            serializer = PurchaseCreditsSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            plan, _ = UserPlan.objects.get_or_create(user=request.user)
+
+            payment = PaymentRecord.objects.create(
+                user=request.user,
+                amount_usd=config.paid_credit_price_usd * config.credits_per_purchase,
+                credits_purchased=config.credits_per_purchase,
+                status='completed',
+                payment_reference=serializer.validated_data['payment_reference'],
+                completed_at=timezone.now(),
+            )
+
+            plan.add_paid_credits(config.credits_per_purchase)
+
+            return Response({
+                'detail': f'{config.credits_per_purchase} paid credits added to your account.',
+                'credits_purchased': config.credits_per_purchase,
+                'paid_credits': plan.paid_credits,
+                'total_credits': plan.total_credits,
+                'payment_id': payment.id,
+                'credits': plan.total_credits,
+            }, status=status.HTTP_201_CREATED)
+
+        try:
+            stripe = get_stripe_client()
+        except ImproperlyConfigured as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        success_url, cancel_url = get_checkout_urls()
+        amount_usd = config.paid_credit_price_usd * config.credits_per_purchase
+        amount_cents = int(amount_usd * 100)
+
+        checkout_session = stripe.checkout.Session.create(
+            mode='payment',
+            success_url=success_url,
+            cancel_url=cancel_url,
+            payment_method_types=['card'],
+            customer_email=request.user.email or None,
+            metadata={
+                'user_id': str(request.user.id),
+                'credits_purchased': str(config.credits_per_purchase),
+            },
+            line_items=[
+                {
+                    'quantity': 1,
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': amount_cents,
+                        'product_data': {
+                            'name': f'{config.credits_per_purchase} Matchmaking Credits',
+                            'description': 'Unlock premium compatibility insights and additional checks.',
+                        },
+                    },
+                }
+            ],
         )
 
-        # Add credits to wallet
-        plan.add_paid_credits(config.credits_per_purchase)
+        PaymentRecord.objects.create(
+            user=request.user,
+            amount_usd=amount_usd,
+            credits_purchased=config.credits_per_purchase,
+            status='pending',
+            payment_reference=checkout_session.id,
+        )
 
         return Response({
-            'detail': f'{config.credits_per_purchase} paid credits added to your account.',
+            'checkout_url': checkout_session.url,
+            'session_id': checkout_session.id,
             'credits_purchased': config.credits_per_purchase,
-            'paid_credits':      plan.paid_credits,
-            'total_credits':     plan.total_credits,
-            'payment_id':        payment.id,
+            'amount_usd': str(amount_usd),
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def purchase_confirm(self, request):
+        serializer = CheckoutSessionConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data['session_id']
+
+        payment = PaymentRecord.objects.filter(
+            payment_reference=session_id,
+        ).select_related('user').first()
+        if payment and payment.user_id != request.user.id:
+            return Response(
+                {'detail': 'This Stripe session does not belong to the current user.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            stripe = get_stripe_client()
+        except ImproperlyConfigured as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        try:
+            checkout_session = stripe.checkout.Session.retrieve(session_id)
+        except Exception:
+            return Response(
+                {'detail': 'Unable to retrieve the Stripe checkout session.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        metadata = checkout_session.get('metadata') or {}
+        metadata_user_id = metadata.get('user_id')
+        if metadata_user_id and str(request.user.id) != str(metadata_user_id):
+            return Response(
+                {'detail': 'This Stripe session does not belong to the current user.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            payment, _ = finalize_checkout_session(checkout_session)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        plan, _ = UserPlan.objects.get_or_create(user=request.user)
+
+        return Response({
+            'detail': f'{payment.credits_purchased} paid credits added to your account.',
+            'credits_purchased': payment.credits_purchased,
+            'paid_credits': plan.paid_credits,
+            'total_credits': plan.total_credits,
+            'payment_id': payment.id,
+            'credits': plan.total_credits,
+        })
 
     @action(detail=False, methods=['get'])
     def payment_history(self, request):
@@ -853,3 +959,41 @@ class PlanViewSet(viewsets.ViewSet):
         """
         params = CompatibilityParameter.objects.filter(is_active=True)
         return Response(CompatibilityParameterSerializer(params, many=True).data)
+
+
+@csrf_exempt
+def stripe_webhook(request):
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed.'}, status=405)
+
+    webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', '')
+    if not webhook_secret:
+        return JsonResponse({'detail': 'Stripe webhook is not configured.'}, status=503)
+
+    try:
+        stripe = get_stripe_client()
+        event = stripe.Webhook.construct_event(
+            payload=request.body,
+            sig_header=request.META.get('HTTP_STRIPE_SIGNATURE', ''),
+            secret=webhook_secret,
+        )
+    except ImproperlyConfigured as exc:
+        logger.exception("Stripe webhook configuration error: %s", exc)
+        return JsonResponse({'detail': str(exc)}, status=503)
+    except Exception as exc:
+        logger.warning("Stripe webhook rejected: %s", exc)
+        return JsonResponse({'detail': 'Invalid Stripe webhook payload.'}, status=400)
+
+    event_type = event.get('type')
+    session = event.get('data', {}).get('object', {})
+
+    try:
+        if event_type == 'checkout.session.completed':
+            finalize_checkout_session(session)
+        elif event_type == 'checkout.session.expired':
+            mark_payment_record_failed(session.get('id'))
+    except Exception as exc:
+        logger.exception("Failed to process Stripe webhook %s: %s", event_type, exc)
+        return JsonResponse({'detail': 'Unable to process Stripe webhook.'}, status=400)
+
+    return HttpResponse(status=200)

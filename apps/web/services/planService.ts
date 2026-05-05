@@ -1,10 +1,11 @@
 import { apiClient } from "@/services/api/client";
 import type {
+  ConfirmCheckoutSessionRequest,
+  ConfirmCheckoutSessionResponse,
+  CreateCheckoutSessionResponse,
   PaymentHistoryResponse,
   PlanMeResponse,
   PlanParametersResponse,
-  PurchasePlanRequest,
-  PurchasePlanResponse,
 } from "@/types/plan";
 
 const toRecord = (value: unknown): Record<string, unknown> | null => {
@@ -117,9 +118,19 @@ export const planService = {
     return normalizePaymentHistoryResponse(data);
   },
 
-  async purchase(payload: PurchasePlanRequest): Promise<PurchasePlanResponse> {
-    const { data } = await apiClient.post<PurchasePlanResponse>(
+  async createCheckoutSession(): Promise<CreateCheckoutSessionResponse> {
+    const { data } = await apiClient.post<CreateCheckoutSessionResponse>(
       "/plan/purchase/",
+      {},
+    );
+    return data;
+  },
+
+  async confirmCheckoutSession(
+    payload: ConfirmCheckoutSessionRequest,
+  ): Promise<ConfirmCheckoutSessionResponse> {
+    const { data } = await apiClient.post<ConfirmCheckoutSessionResponse>(
+      "/plan/purchase_confirm/",
       payload,
     );
     return data;

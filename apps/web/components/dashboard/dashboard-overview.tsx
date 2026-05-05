@@ -1,7 +1,9 @@
 "use client";
 
+import { isAxiosError } from "axios";
 import Link from "next/link";
-import { type ReactNode, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { SiteFooter } from "@/components/layout/site-footer";
 import {
   isMissingProfileError,
@@ -20,6 +22,7 @@ import { planService } from "@/services/planService";
 import { privatePersonsService } from "@/services/privatePersonsService";
 import { profileService } from "@/services/profileService";
 import { useAuthStore } from "@/store/authStore";
+import { usePlanStore } from "@/store/planStore";
 import type { StoredCompatibilityResult } from "@/store/resultsStore";
 import type { PlanMeResponse, PlanParameters } from "@/types/plan";
 import type { PrivatePerson } from "@/types/private-persons";
@@ -39,11 +42,6 @@ const formatDate = (value?: string) => {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
-};
-
-const createPaymentReference = (credits: number) => {
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `dashboard-${credits}-${Date.now()}-${suffix}`;
 };
 
 function DashboardAction({
@@ -155,6 +153,17 @@ const getScoreTone = (score: number) => {
   }
 
   return "text-[#A22E34]";
+};
+
+const getRequestErrorMessage = (error: unknown, fallback: string) => {
+  if (isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === "string" && detail.trim()) {
+      return detail;
+    }
+  }
+
+  return fallback;
 };
 
 function RecentAnalysisRow({
@@ -444,7 +453,9 @@ function TopCompatibleRow({
 
 export function DashboardOverview() {
   const user = useAuthStore((state) => state.user);
+  const setCredits = usePlanStore((state) => state.setCredits);
   const { credits, parameters } = usePlanAccess();
+  const searchParams = useSearchParams();
   const [history, setHistory] = useState<StoredCompatibilityResult[]>([]);
   const [topMatches, setTopMatches] = useState<StoredCompatibilityResult[]>([]);
   const [privatePersons, setPrivatePersons] = useState<PrivatePerson[]>([]);
@@ -455,6 +466,7 @@ export function DashboardOverview() {
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<ReactNode | null>(null);
+  const handledCheckoutSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -525,10 +537,81 @@ export function DashboardOverview() {
     })();
   }, []);
 
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    const sessionId = searchParams.get("session_id");
+
+    if (!paymentStatus) {
+      return;
+    }
+
+    const clearPaymentQuery = () => {
+      window.history.replaceState({}, "", "/dashboard");
+    };
+
+    if (paymentStatus === "cancelled") {
+      setPurchaseError("Stripe checkout was cancelled before payment completed.");
+      setPurchaseMessage(null);
+      clearPaymentQuery();
+      return;
+    }
+
+    if (paymentStatus !== "success" || !sessionId) {
+      return;
+    }
+
+    if (handledCheckoutSessionIdRef.current === sessionId) {
+      return;
+    }
+
+    handledCheckoutSessionIdRef.current = sessionId;
+
+    void (async () => {
+      try {
+        setIsPurchasingCredits(true);
+        setPurchaseError(null);
+        setPurchaseMessage(null);
+
+        const confirmation = await planService.confirmCheckoutSession({
+          session_id: sessionId,
+        });
+
+        if (typeof confirmation.credits === "number") {
+          setCredits(confirmation.credits);
+          setPlanSummary((current) => ({
+            ...(current ?? {}),
+            credits: confirmation.credits,
+            total_credits: confirmation.total_credits ?? confirmation.credits,
+            paid_credits: confirmation.paid_credits,
+          }));
+        } else {
+          const refreshedPlan = await planService.getCurrent();
+          setCredits(refreshedPlan.credits ?? 0);
+          setPlanSummary(refreshedPlan);
+        }
+
+        setPurchaseMessage(
+          confirmation.detail ?? "Payment received. Credits were added to your account.",
+        );
+      } catch (paymentError) {
+        setPurchaseError(
+          getRequestErrorMessage(
+            paymentError,
+            "Payment succeeded, but we could not confirm your credits yet. Please refresh shortly.",
+          ),
+        );
+      } finally {
+        setIsPurchasingCredits(false);
+        clearPaymentQuery();
+      }
+    })();
+  }, [searchParams, setCredits]);
+
   const strongestMatch = topMatches[0] ?? null;
   const availableCredits = planSummary?.credits ?? credits;
+  const creditsPerPurchase = planSummary?.credits_per_purchase ?? 10;
 
-  const displayName = user?.username || user?.first_name || user?.email || "Samar";
+  const displayName = user?.username || user?.first_name || user?.email || "";
   const recentAnalyses = history.slice(0, 3);
   const topCompatiblePeople = (topMatches.length > 0 ? topMatches : history).slice(0, 3);
   const matchesFound = history.filter((result) => result.score >= 50).length;
@@ -539,25 +622,17 @@ export function DashboardOverview() {
       setPurchaseError(null);
       setPurchaseMessage(null);
 
-      const purchaseResponse = await planService.purchase({
-        credits: 10,
-        payment_reference: createPaymentReference(10),
-      });
+      const checkoutSession = await planService.createCheckoutSession();
 
-      if (typeof purchaseResponse.credits === "number") {
-        setPlanSummary((current) => ({
-          ...(current ?? {}),
-          credits: purchaseResponse.credits,
-          total_credits: purchaseResponse.credits,
-        }));
-      } else {
-        const refreshedPlan = await planService.getCurrent();
-        setPlanSummary(refreshedPlan);
+      if (!checkoutSession.checkout_url) {
+        throw new Error("Stripe checkout URL missing from API response.");
       }
 
-      setPurchaseMessage("10 credits added to your account.");
-    } catch {
-      setPurchaseError("Unable to purchase credits right now.");
+      window.location.assign(checkoutSession.checkout_url);
+    } catch (purchaseError) {
+      setPurchaseError(
+        getRequestErrorMessage(purchaseError, "Unable to start Stripe checkout right now."),
+      );
     } finally {
       setIsPurchasingCredits(false);
     }
@@ -717,7 +792,9 @@ export function DashboardOverview() {
                 type="button"
                 onClick={handlePurchaseCredits}
               >
-                {isPurchasingCredits ? "Purchasing..." : "Buy 10 Credits"}
+                {isPurchasingCredits
+                  ? "Redirecting to Stripe..."
+                  : `Buy ${creditsPerPurchase} Credits`}
               </button>
               <Link
                 href="/payment-history"

@@ -19,11 +19,6 @@ export interface PaymentHistoryItem {
   status?: string;
 }
 
-export interface PurchasePlanRequest {
-  credits: number;
-  payment_reference: string;
-}
-
 export interface PlanParameters {
   [key: string]: PlanParameter;
 }
@@ -48,8 +43,24 @@ export interface PaymentHistoryResponse {
   meta?: ApiMeta;
 }
 
-export interface PurchasePlanResponse {
-  success?: boolean;
+export interface CreateCheckoutSessionResponse {
+  amount_usd?: string;
+  checkout_url?: string;
+  credits_purchased?: number;
+  session_id?: string;
+  meta?: ApiMeta;
+}
+
+export interface ConfirmCheckoutSessionRequest {
+  session_id: string;
+}
+
+export interface ConfirmCheckoutSessionResponse {
   credits?: number;
+  credits_purchased?: number;
+  detail?: string;
+  paid_credits?: number;
+  payment_id?: number;
+  total_credits?: number;
   meta?: ApiMeta;
 }

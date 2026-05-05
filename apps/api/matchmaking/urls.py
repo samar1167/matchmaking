@@ -5,6 +5,7 @@ from .views import (
     VerifyEmailView, ResendVerificationView, ForgotPasswordView, ResetPasswordView,
     UserProfileViewSet, UserMatchPreferenceViewSet, UserMatchViewSet, PrivatePersonViewSet,
     UserConnectionViewSet, ChatConversationViewSet, ChatUnreadCountView, CompatibilityViewSet, PlanViewSet,
+    stripe_webhook,
 )
 
 router = DefaultRouter()
@@ -27,5 +28,6 @@ urlpatterns = [
     path('auth/forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('auth/reset-password/',  ResetPasswordView.as_view(),  name='reset-password'),
     path('chat/unread-count/', ChatUnreadCountView.as_view(), name='chat-unread-count'),
+    path('plan/stripe-webhook/', stripe_webhook, name='plan-stripe-webhook'),
     path('', include(router.urls)),
 ]

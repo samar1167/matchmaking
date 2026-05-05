@@ -494,9 +494,13 @@ class PaymentRecordSerializer(serializers.ModelSerializer):
 
 
 class PurchaseCreditsSerializer(serializers.Serializer):
-    """Request body for purchasing paid credits."""
-    payment_reference = serializers.CharField(max_length=255,
-        help_text="Transaction ID from your payment gateway (Stripe, Razorpay, etc.)")
+    """Backward-compatible manual purchase confirmation payload."""
+    payment_reference = serializers.CharField(max_length=255)
+
+
+class CheckoutSessionConfirmSerializer(serializers.Serializer):
+    """Request body for confirming a Stripe Checkout session."""
+    session_id = serializers.CharField(max_length=255)
 
 class ParameterResultSerializer(serializers.Serializer):
     """Single parameter in a compatibility result."""
