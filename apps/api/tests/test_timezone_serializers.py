@@ -1,5 +1,5 @@
 from matchmaking.astrology_service import AstrologyService
-from matchmaking.models import PrivatePerson, UserProfile
+from matchmaking.models import UserProfile
 from matchmaking.serializers import PrivatePersonSerializer, UserProfileSerializer
 
 
@@ -76,3 +76,24 @@ def test_user_profile_serializer_keeps_provided_timezone_without_lookup(monkeypa
     serializer._set_timezone(validated_data)
 
     assert validated_data["timezone"] == "Asia/Kolkata"
+
+
+def test_astrology_service_get_timezone_name_from_coordinates(monkeypatch):
+    monkeypatch.setattr(AstrologyService, "_timezone_finder", _FakeTimezoneFinder())
+    timezone_name = AstrologyService._get_timezone_name(
+        latitude=19.0760,
+        longitude=72.8777,
+    )
+
+    assert timezone_name == "Asia/Kolkata"
+
+
+def test_astrology_service_get_timezone_name_falls_back_when_lookup_misses(monkeypatch):
+    monkeypatch.setattr(AstrologyService, "_timezone_finder", _FakeTimezoneFinder())
+    timezone_name = AstrologyService._get_timezone_name(
+        latitude=0,
+        longitude=0,
+        fallback_timezone="UTC",
+    )
+
+    assert timezone_name == "UTC"

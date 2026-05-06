@@ -21,6 +21,19 @@ class TestPrivatePerson:
         assert data["name"] == "Unique Person ABC"
         assert "id" in data
 
+    def test_create_private_person_calculates_timezone_from_coordinates(self, auth_headers_one):
+        resp = requests.post(f"{BASE_URL}/private-persons/", json={
+            "name": "Timezone Private Person",
+            "date_of_birth": "1995-03-10",
+            "time_of_birth": "10:00:00",
+            "place_of_birth": "Bangalore",
+            "latitude": 12.9716,
+            "longitude": 77.5946,
+            "timezone": "UTC",
+        }, headers=auth_headers_one)
+        assert resp.status_code == 201
+        assert resp.json()["timezone"] == "Asia/Kolkata"
+
     def test_list_private_persons(self, private_person, auth_headers_one):
         resp = requests.get(f"{BASE_URL}/private-persons/", headers=auth_headers_one)
         assert resp.status_code == 200
@@ -41,6 +54,16 @@ class TestPrivatePerson:
         }, headers=auth_headers_one)
         assert resp.status_code == 200
         assert resp.json()["nickname"] == "Updated Nick"
+
+    def test_update_private_person_recalculates_timezone_from_coordinates(self, private_person, auth_headers_one):
+        pid = private_person["id"]
+        resp = requests.patch(f"{BASE_URL}/private-persons/{pid}/", json={
+            "place_of_birth": "New York",
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+        }, headers=auth_headers_one)
+        assert resp.status_code == 200
+        assert resp.json()["timezone"] == "America/New_York"
 
     def test_private_person_not_visible_to_other_user(self, private_person, auth_headers_two):
         """User two must NOT be able to access user one's private persons."""

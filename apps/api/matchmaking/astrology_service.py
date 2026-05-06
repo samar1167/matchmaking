@@ -11,6 +11,11 @@ from urllib.parse import urljoin
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+try:
+    from timezonefinder import TimezoneFinder
+except ImportError:  # pragma: no cover - dependency is optional at import time
+    TimezoneFinder = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,6 +26,7 @@ class AstrologyService:
     SECRET_KEY  = getattr(settings, 'DILAANU_SECRET_KEY', '')
 
     TIMEOUT = 15
+    _timezone_finder = TimezoneFinder() if TimezoneFinder else None
 
     @classmethod
     def _get_setting(cls, name: str) -> str:
@@ -77,6 +83,24 @@ class AstrologyService:
         return offset_seconds / 3600
 
     @classmethod
+    def _get_timezone_name(cls, latitude=None, longitude=None, fallback_timezone=None):
+        timezone_name = fallback_timezone or 'UTC'
+
+        if latitude is None or longitude is None:
+            return timezone_name
+
+        try:
+            lat = float(latitude)
+            lng = float(longitude)
+        except (TypeError, ValueError):
+            return timezone_name
+
+        if cls._timezone_finder is None:
+            return timezone_name
+
+        return cls._timezone_finder.timezone_at(lat=lat, lng=lng) or timezone_name
+
+    @classmethod
     def _is_valid_time(cls, t):
         if t is None:
             return False
@@ -95,7 +119,7 @@ class AstrologyService:
             'bdatetime': cls._combine_date_time(profile.date_of_birth, profile.time_of_birth).strftime('%Y-%m-%d %H:%M:%S'),
             'blat': profile.latitude or 0, 
             'blon': profile.longitude or 0,
-            'tz': cls._get_utc_offset(profile.place_of_birth) if profile.place_of_birth else 0,
+            'tz': cls._get_utc_offset(profile.timezone) if profile.timezone else 0,
             'timeUnknown': (not cls._is_valid_time(profile.time_of_birth)) #TODO change it to long lat based time unknown
         }
 
