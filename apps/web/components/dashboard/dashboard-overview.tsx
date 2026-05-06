@@ -9,6 +9,7 @@ import {
   isMissingProfileError,
   MissingProfileMessage,
 } from "@/components/profile/missing-profile-message";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 import {
   CompatibilityScoreLine,
   getCompatibilityCategory,
@@ -130,19 +131,6 @@ function DashboardIllustration() {
   );
 }
 
-function DashboardAvatar({ label }: { label: string }) {
-  return (
-    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[#C07771] bg-[#EABFB9] text-sm font-bold text-[#901214]">
-      {label
-        .split(" ")
-        .map((part) => part[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase() || "LU"}
-    </div>
-  );
-}
-
 const getScoreTone = (score: number) => {
   if (score >= 80) {
     return "text-[#1f7a3f]";
@@ -175,7 +163,12 @@ function RecentAnalysisRow({
 }) {
   return (
     <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 border-b border-[#EABFB9] py-4 last:border-b-0">
-      <DashboardAvatar label={result.personName} />
+      <PersonAvatar
+        className="h-14 w-14"
+        fallback="LU"
+        imageUrl={result.personImageUrl}
+        label={result.personName}
+      />
       <div>
         <p className="text-sm font-bold text-[#2d1718]">You & {result.personName}</p>
         <p className="mt-1 text-xs text-[#2d1718]/65">
@@ -582,7 +575,12 @@ function TopCompatibleRow({
 }) {
   return (
     <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-5 border-b border-[#EABFB9] py-4 last:border-b-0">
-      <DashboardAvatar label={result.personName} />
+      <PersonAvatar
+        className="h-14 w-14"
+        fallback="LU"
+        imageUrl={result.personImageUrl}
+        label={result.personName}
+      />
       <div>
         <p className="text-sm font-bold text-[#2d1718]">{result.personName}</p>
         <p className="mt-1 text-xs text-[#2d1718]/65">Compatibility profile</p>

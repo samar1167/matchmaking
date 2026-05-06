@@ -1,7 +1,17 @@
 import pytest
 import requests
+from io import BytesIO
+from PIL import Image
 
 BASE_URL = "http://localhost/api"
+
+
+def build_test_image_bytes(format_name="PNG", size=(400, 400), color=(120, 32, 32)):
+    file_obj = BytesIO()
+    image = Image.new("RGB", size, color)
+    image.save(file_obj, format=format_name)
+    file_obj.seek(0)
+    return file_obj.getvalue()
 
 
 class TestUserProfile:
@@ -65,6 +75,37 @@ class TestUserProfile:
         }, headers=auth_headers_one)
         assert resp.status_code in (200, 201)
         assert resp.json()["place_of_birth"] == "Mumbai"
+
+    def test_upload_and_remove_profile_picture(self, auth_headers_one):
+        upload_resp = requests.patch(
+            f"{BASE_URL}/profiles/me/",
+            data={"public_match": "true"},
+            files={
+                "profile_picture": ("profile.png", build_test_image_bytes(), "image/png"),
+            },
+            headers=auth_headers_one,
+        )
+        assert upload_resp.status_code == 200
+        upload_data = upload_resp.json()
+        assert upload_data["profile_picture"]
+        assert upload_data["profile_picture_variants"]["original"]
+        assert upload_data["profile_picture_variants"]["thumb"]
+        assert upload_data["profile_picture_variants"]["card"]
+        assert upload_data["profile_picture_variants"]["profile"]
+
+        remove_resp = requests.patch(
+            f"{BASE_URL}/profiles/me/",
+            data={"remove_profile_picture": "true", "public_match": "true"},
+            headers=auth_headers_one,
+        )
+        assert remove_resp.status_code == 200
+        assert remove_resp.json()["profile_picture"] is None
+        assert remove_resp.json()["profile_picture_variants"] == {
+            "original": None,
+            "thumb": None,
+            "card": None,
+            "profile": None,
+        }
 
     def test_create_profile_rejects_invalid_gender(self, auth_headers_one):
         resp = requests.post(f"{BASE_URL}/profiles/me/", json={

@@ -255,8 +255,12 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         if request.method == 'GET':
             if not profile:
                 return Response({'detail': 'Profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-            return Response(UserProfileSerializer(profile).data)
-        serializer = UserProfileSerializer(profile, data=request.data, partial=request.method in ('PUT', 'PATCH'))
+            return Response(self.get_serializer(profile).data)
+        serializer = self.get_serializer(
+            profile,
+            data=request.data,
+            partial=request.method in ('PUT', 'PATCH'),
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
         return Response(serializer.data, status=status.HTTP_200_OK if profile else status.HTTP_201_CREATED)

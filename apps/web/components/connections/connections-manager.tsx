@@ -16,6 +16,11 @@ import {
   getScoreOnTen,
   isNumericCompatibilityValue,
 } from "@/components/ui/compatibility-score";
+import {
+  getPersonDisplayName,
+  getPersonImageUrl,
+  PersonAvatar,
+} from "@/components/ui/person-avatar";
 import { useChatConversationUnreadCounts } from "@/hooks/useChatNotifications";
 import { usePlanAccess } from "@/hooks/usePlanAccess";
 import { cn } from "@/lib/cn";
@@ -94,32 +99,8 @@ const formatTimestamp = (value?: string | null) => {
   }).format(date);
 };
 
-const getProfileDisplayName = (profile?: UserProfile | null) => {
-  if (!profile) {
-    return "Unknown profile";
-  }
-
-  const firstName = profile.first_name ?? profile.user?.first_name ?? "";
-  const lastName = profile.last_name ?? profile.user?.last_name ?? "";
-  const fullName = `${firstName} ${lastName}`.trim();
-
-  return fullName || profile.user?.username || `Profile #${profile.id}`;
-};
-
-const getProfileInitials = (profile?: UserProfile | null) => {
-  const name = getProfileDisplayName(profile);
-  const initials = name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  return initials || "CN";
-};
-
-const getProfileImageUrl = (profile?: UserProfile | null) =>
-  profile?.profile_picture ?? profile?.user?.profile_picture ?? null;
+const getProfileDisplayName = (profile?: UserProfile | null) =>
+  getPersonDisplayName(profile, profile ? `Profile #${profile.id}` : "Unknown profile");
 
 const getConnectionPeer = (connection: Connection, currentProfileId?: number) => {
   if (connection.requester && connection.receiver) {
@@ -392,22 +373,12 @@ function PaginationControls({
 }
 
 function ProfileAvatar({ profile }: { profile?: UserProfile | null }) {
-  const imageUrl = getProfileImageUrl(profile);
-
-  if (imageUrl) {
-    return (
-      <img
-        alt=""
-        className="h-12 w-12 shrink-0 rounded-full border border-[#C07771] object-cover"
-        src={imageUrl}
-      />
-    );
-  }
-
   return (
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#C07771] bg-[#EABFB9] text-sm font-bold text-[#901214]">
-      {getProfileInitials(profile)}
-    </div>
+    <PersonAvatar
+      className="h-12 w-12"
+      imageUrl={getPersonImageUrl(profile)}
+      label={getProfileDisplayName(profile)}
+    />
   );
 }
 

@@ -16,6 +16,13 @@ export interface CompatibilityResult {
   matched_user?: number | string;
   matched_private_person?: number | string;
   matched_user_name?: string;
+  matched_user_profile_picture?: string | null;
+  matched_user_profile_picture_variants?: {
+    original?: string | null;
+    thumb?: string | null;
+    card?: string | null;
+    profile?: string | null;
+  };
   is_private_match?: boolean;
   parameters?: CompatibilityParameter[];
   [key: string]: unknown;

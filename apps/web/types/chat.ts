@@ -3,6 +3,13 @@ export interface ChatConversationUser {
   first_name?: string;
   last_name?: string;
   place_of_birth?: string | null;
+  profile_picture?: string | null;
+  profile_picture_variants?: {
+    original?: string | null;
+    thumb?: string | null;
+    card?: string | null;
+    profile?: string | null;
+  };
 }
 
 export interface ChatMessage {

@@ -1,6 +1,13 @@
 import type { ApiMeta, PaginatedResponse } from "@/types/common";
 import type { AuthUser } from "@/types/auth";
 
+export interface ProfilePictureVariants {
+  original?: string | null;
+  thumb?: string | null;
+  card?: string | null;
+  profile?: string | null;
+}
+
 export interface UserProfile {
   id: number;
   user?: AuthUser;
@@ -8,6 +15,7 @@ export interface UserProfile {
   last_name?: string;
   gender?: string | null;
   profile_picture?: string | null;
+  profile_picture_variants?: ProfilePictureVariants;
   public_match?: boolean | null;
   date_of_birth?: string;
   time_of_birth?: string;

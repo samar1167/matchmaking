@@ -21,6 +21,27 @@ Combined monorepo for the matchmaking backend and frontend.
 
 Frontend runs on `http://localhost:3000` and backend on `http://localhost:8000`.
 
+## Profile Pictures on S3
+
+The API can store uploaded profile pictures in AWS S3.
+
+Set these variables in `apps/api/.env` to enable it:
+
+- `USE_S3_MEDIA_STORAGE=True`
+- `AWS_ACCESS_KEY_ID=...`
+- `AWS_SECRET_ACCESS_KEY=...`
+- `AWS_STORAGE_BUCKET_NAME=...`
+- `AWS_S3_REGION_NAME=...`
+
+Optional settings:
+
+- `AWS_S3_CUSTOM_DOMAIN=cdn.example.com`
+- `AWS_S3_ENDPOINT_URL=...`
+- `AWS_QUERYSTRING_AUTH=False`
+- `AWS_S3_CACHE_CONTROL=max-age=86400`
+
+If `USE_S3_MEDIA_STORAGE` is not enabled, uploads fall back to local Django media storage.
+
 ## Django debugging
 
 VS Code configs are included in `.vscode/launch.json`.

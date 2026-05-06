@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AlertMessage, EmptyState } from "@/components/ui/design-system";
+import { getPersonImageUrl, PersonAvatar } from "@/components/ui/person-avatar";
 import { cn } from "@/lib/cn";
 import { chatService } from "@/services/chatService";
 import { authStore } from "@/store/authStore";
@@ -54,14 +55,6 @@ const getConversationName = (conversation?: ChatConversation | null) => {
 
   return fullName || `User #${conversation.other_user.id}`;
 };
-
-const getConversationInitials = (conversation?: ChatConversation | null) =>
-  getConversationName(conversation)
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "CH";
 
 const getConversationPlace = (conversation?: ChatConversation | null) =>
   conversation?.other_user.place_of_birth || "Direct connection";
@@ -399,9 +392,12 @@ export function ChatDialog({
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[#EABFB9] bg-[#fafafa] shadow-[0_24px_80px_rgba(45,23,24,0.28)]">
         <header className="flex items-start justify-between gap-4 border-b border-[#EABFB9] px-5 py-4">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#C07771] bg-[#EABFB9] text-sm font-bold text-[#901214]">
-              {getConversationInitials(selectedConversation)}
-            </span>
+            <PersonAvatar
+              className="h-12 w-12"
+              fallback="CH"
+              imageUrl={getPersonImageUrl(selectedConversation?.other_user)}
+              label={getConversationName(selectedConversation)}
+            />
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#A22E34]">
                 Direct Chat

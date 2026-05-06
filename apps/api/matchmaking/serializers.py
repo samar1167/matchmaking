@@ -1,9 +1,13 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.core.files.base import ContentFile
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from io import BytesIO
+from pathlib import PurePosixPath
+from PIL import Image, ImageOps
 from .astrology_service import AstrologyService
 from .models import (
     UserProfile, UserMatchPreference, UserMatch, UserConnection, PrivatePerson, CompatibilityScore, CompatibilityParameter,
@@ -15,10 +19,15 @@ User = get_user_model()
 
 MAX_PROFILE_PICTURE_BYTES = 4 * 1024 * 1024
 ALLOWED_PROFILE_PICTURE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
-MIN_PROFILE_PICTURE_DIMENSION = 300
-MAX_PROFILE_PICTURE_DIMENSION = 3000
-MIN_PROFILE_PICTURE_ASPECT_RATIO = 0.67
-MAX_PROFILE_PICTURE_ASPECT_RATIO = 1.5
+MIN_PROFILE_PICTURE_DIMENSION = 200
+MAX_PROFILE_PICTURE_DIMENSION = 4000
+MIN_PROFILE_PICTURE_ASPECT_RATIO = 0.5
+MAX_PROFILE_PICTURE_ASPECT_RATIO = 2.0
+PROFILE_PICTURE_VARIANT_SPECS = {
+    'thumb': (128, 128),
+    'card': (320, 320),
+    'profile': (640, 640),
+}
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -123,7 +132,35 @@ class ResetPasswordSerializer(serializers.Serializer):
         attrs['record'] = record
         return attrs
 
+
+class AbsoluteImageUrlField(serializers.ImageField):
+    def to_representation(self, value):
+        url = super().to_representation(value)
+        if not url:
+            return url
+
+        request = self.context.get('request')
+        if request and url.startswith('/'):
+            return request.build_absolute_uri(url)
+
+        return url
+
+
+def build_storage_url(storage, name, request=None):
+    if not name:
+        return None
+
+    url = storage.url(name)
+    if request and url.startswith('/'):
+        return request.build_absolute_uri(url)
+
+    return url
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
+    profile_picture = AbsoluteImageUrlField(required=False, allow_null=True)
+    profile_picture_variants = serializers.SerializerMethodField()
+    remove_profile_picture = serializers.BooleanField(write_only=True, required=False, default=False)
     user = UserSerializer(read_only=True)
     first_name = serializers.CharField(max_length=150, write_only=True, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=150, write_only=True, required=False, allow_blank=True)
@@ -143,6 +180,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'longitude',
             'timezone',
             'profile_picture',
+            'profile_picture_variants',
+            'remove_profile_picture',
             'public_match',
             'created_at',
             'updated_at',
@@ -180,28 +219,60 @@ class UserProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Uploaded file is not a valid image.')
 
         if width < MIN_PROFILE_PICTURE_DIMENSION or height < MIN_PROFILE_PICTURE_DIMENSION:
-            raise serializers.ValidationError('Profile picture must be at least 300x300 pixels.')
+            raise serializers.ValidationError(
+                f'Profile picture must be at least 200 pixels on each side. Uploaded image is {width}x{height} pixels.'
+            )
 
         if width > MAX_PROFILE_PICTURE_DIMENSION or height > MAX_PROFILE_PICTURE_DIMENSION:
-            raise serializers.ValidationError('Profile picture must be at most 3000x3000 pixels.')
+            raise serializers.ValidationError(
+                f'Profile picture must be at most 4000 pixels on each side. Uploaded image is {width}x{height} pixels.'
+            )
 
         aspect_ratio = width / height
         if not (MIN_PROFILE_PICTURE_ASPECT_RATIO <= aspect_ratio <= MAX_PROFILE_PICTURE_ASPECT_RATIO):
-            raise serializers.ValidationError('Profile picture must be roughly square or portrait-oriented.')
+            raise serializers.ValidationError(
+                f'Profile picture can be portrait, square, or moderately landscape, but not extremely narrow or wide. '
+                f'Uploaded image is {width}x{height} pixels.'
+            )
 
         return value
 
+    def get_profile_picture_variants(self, instance):
+        storage = instance.profile_picture.storage if instance.profile_picture else None
+        request = self.context.get('request')
+
+        if not storage:
+            return {
+                'original': None,
+                'thumb': None,
+                'card': None,
+                'profile': None,
+            }
+
+        return {
+            'original': build_storage_url(storage, instance.profile_picture.name, request),
+            'thumb': build_storage_url(storage, instance.profile_picture_thumb, request),
+            'card': build_storage_url(storage, instance.profile_picture_card, request),
+            'profile': build_storage_url(storage, instance.profile_picture_profile, request),
+        }
+
     def create(self, validated_data):
+        remove_profile_picture = validated_data.pop('remove_profile_picture', False)
         user_data = {
             'first_name': validated_data.pop('first_name', None),
             'last_name': validated_data.pop('last_name', None),
         }
+        if remove_profile_picture:
+            validated_data['profile_picture'] = None
         self._set_timezone(validated_data)
         profile = UserProfile.objects.create(**validated_data)
+        if profile.profile_picture:
+            self._generate_profile_picture_variants(profile)
         self._update_user(profile.user, user_data)
         return profile
 
     def update(self, instance, validated_data):
+        remove_profile_picture = validated_data.pop('remove_profile_picture', False)
         user_data = {}
         if 'first_name' in validated_data:
             user_data['first_name'] = validated_data.pop('first_name')
@@ -209,7 +280,66 @@ class UserProfileSerializer(serializers.ModelSerializer):
             user_data['last_name'] = validated_data.pop('last_name')
         self._update_user(instance.user, user_data)
         self._set_timezone(validated_data, instance=instance)
-        return super().update(instance, validated_data)
+
+        current_picture_name = instance.profile_picture.name if instance.profile_picture else None
+        current_variant_names = [
+            instance.profile_picture_thumb,
+            instance.profile_picture_card,
+            instance.profile_picture_profile,
+        ]
+        next_picture = validated_data.get('profile_picture')
+        picture_storage = instance.profile_picture.storage if instance.profile_picture else None
+        should_replace_picture = bool(next_picture)
+
+        if remove_profile_picture:
+            validated_data['profile_picture'] = None
+            validated_data['profile_picture_thumb'] = ''
+            validated_data['profile_picture_card'] = ''
+            validated_data['profile_picture_profile'] = ''
+
+        updated_instance = super().update(instance, validated_data)
+
+        if should_replace_picture and updated_instance.profile_picture:
+            self._generate_profile_picture_variants(updated_instance)
+
+        if current_picture_name and picture_storage and (remove_profile_picture or should_replace_picture):
+            picture_storage.delete(current_picture_name)
+            self._delete_variant_files(picture_storage, current_variant_names)
+
+        return updated_instance
+
+    def _delete_variant_files(self, storage, names):
+        for name in names:
+            if name:
+                storage.delete(name)
+
+    def _generate_profile_picture_variants(self, instance):
+        if not instance.profile_picture:
+            return
+
+        storage = instance.profile_picture.storage
+        picture_path = PurePosixPath(instance.profile_picture.name)
+        variant_values = {}
+
+        with instance.profile_picture.open('rb') as picture_file:
+            image = Image.open(picture_file)
+            image = ImageOps.exif_transpose(image)
+            image = image.convert('RGB')
+
+            for variant_name, size in PROFILE_PICTURE_VARIANT_SPECS.items():
+                variant_image = ImageOps.fit(image.copy(), size, method=Image.Resampling.LANCZOS)
+                buffer = BytesIO()
+                variant_image.save(buffer, format='WEBP', quality=82, optimize=True)
+                buffer.seek(0)
+
+                variant_path = picture_path.with_name(f'{picture_path.stem}_{variant_name}.webp').as_posix()
+                saved_name = storage.save(variant_path, ContentFile(buffer.read()))
+                variant_values[f'profile_picture_{variant_name}'] = saved_name
+
+        for field_name, value in variant_values.items():
+            setattr(instance, field_name, value)
+
+        instance.save(update_fields=list(variant_values.keys()))
 
     def _set_timezone(self, validated_data, instance=None):
         latitude = validated_data.get('latitude')
@@ -282,6 +412,8 @@ class UserMatchPreferenceSerializer(serializers.ModelSerializer):
 
 
 class UserMatchProfileSerializer(serializers.ModelSerializer):
+    profile_picture = AbsoluteImageUrlField(read_only=True)
+    profile_picture_variants = serializers.SerializerMethodField()
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
 
@@ -293,9 +425,13 @@ class UserMatchProfileSerializer(serializers.ModelSerializer):
             'last_name',
             'place_of_birth',
             'profile_picture',
+            'profile_picture_variants',
             'public_match',
         )
         read_only_fields = fields
+
+    def get_profile_picture_variants(self, instance):
+        return UserProfileSerializer(instance, context=self.context).data['profile_picture_variants']
 
 
 class UserMatchSerializer(serializers.ModelSerializer):
@@ -312,12 +448,17 @@ class UserConnectionRequestSerializer(serializers.Serializer):
 
 
 class UserConnectionProfileSerializer(serializers.ModelSerializer):
+    profile_picture = AbsoluteImageUrlField(read_only=True)
+    profile_picture_variants = serializers.SerializerMethodField()
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
 
     class Meta:
         model = UserProfile
-        fields = ('id', 'first_name', 'last_name', 'place_of_birth')
+        fields = ('id', 'first_name', 'last_name', 'place_of_birth', 'profile_picture', 'profile_picture_variants')
+
+    def get_profile_picture_variants(self, instance):
+        return UserProfileSerializer(instance, context=self.context).data['profile_picture_variants']
 
 
 class UserConnectionSerializer(serializers.ModelSerializer):
@@ -514,6 +655,8 @@ class ParameterResultSerializer(serializers.Serializer):
 class CompatibilityScoreSerializer(serializers.ModelSerializer):
     # matched_user_email           = serializers.EmailField(source='matched_user.user.email', read_only=True)
     matched_user_name            = serializers.SerializerMethodField()
+    matched_user_profile_picture = AbsoluteImageUrlField(source='matched_user.profile_picture', read_only=True)
+    matched_user_profile_picture_variants = serializers.SerializerMethodField()
     # matched_private_person_name  = serializers.CharField(source='matched_private_person.name', read_only=True)
     is_private_match             = serializers.BooleanField(read_only=True)
     parameters                   = serializers.SerializerMethodField()
@@ -523,7 +666,8 @@ class CompatibilityScoreSerializer(serializers.ModelSerializer):
         model = CompatibilityScore
         fields = (
             'id', 'user',
-            'matched_user', 'matched_user_name',
+            'matched_user', 'matched_user_name', 'matched_user_profile_picture',
+            'matched_user_profile_picture_variants',
             'matched_private_person',
             'is_private_match',
             'is_paid',
@@ -542,6 +686,11 @@ class CompatibilityScoreSerializer(serializers.ModelSerializer):
             return None
         user = obj.matched_user.user
         return user.get_full_name() or user.username or user.email
+
+    def get_matched_user_profile_picture_variants(self, obj):
+        if not obj.matched_user:
+            return None
+        return UserProfileSerializer(obj.matched_user, context=self.context).data['profile_picture_variants']
 
     def get_parameters(self, obj):
         is_paid = obj.is_paid
@@ -573,6 +722,8 @@ class CompatibilityScoreSerializer(serializers.ModelSerializer):
 
 class CompatibilityTransactionSerializer(serializers.ModelSerializer):
     matched_user_name = serializers.SerializerMethodField()
+    matched_user_profile_picture = AbsoluteImageUrlField(source='matched_user.profile_picture', read_only=True)
+    matched_user_profile_picture_variants = serializers.SerializerMethodField()
     is_private_match = serializers.SerializerMethodField()
     parameters = serializers.SerializerMethodField()
     upgrade_required = serializers.SerializerMethodField()
@@ -581,7 +732,8 @@ class CompatibilityTransactionSerializer(serializers.ModelSerializer):
         model = CompatibilityTransaction
         fields = (
             'id', 'user',
-            'matched_user', 'matched_user_name',
+            'matched_user', 'matched_user_name', 'matched_user_profile_picture',
+            'matched_user_profile_picture_variants',
             'matched_private_person',
             'compatibility_score',
             'is_private_match',
@@ -603,6 +755,11 @@ class CompatibilityTransactionSerializer(serializers.ModelSerializer):
             return None
         user = obj.matched_user.user
         return user.get_full_name() or user.username or user.email
+
+    def get_matched_user_profile_picture_variants(self, obj):
+        if not obj.matched_user:
+            return None
+        return UserProfileSerializer(obj.matched_user, context=self.context).data['profile_picture_variants']
 
     def get_is_private_match(self, obj):
         return obj.matched_private_person is not None

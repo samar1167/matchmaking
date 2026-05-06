@@ -3,12 +3,14 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from datetime import datetime
 import secrets
+import uuid
 from django.utils import timezone
 
 
 def user_profile_picture_upload_to(instance, filename):
     extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
-    return f'user_profiles/{instance.user_id}/profile.{extension}'
+    year = timezone.now().year
+    return f'user_profiles/{year}/{uuid.uuid4()}.{extension}'
 
 
 class UserProfile(models.Model):
@@ -26,6 +28,9 @@ class UserProfile(models.Model):
     longitude      = models.FloatField(null=True, blank=True)
     timezone       = models.CharField(max_length=50, null=True, blank=True, default='UTC')
     profile_picture = models.ImageField(upload_to=user_profile_picture_upload_to, null=True, blank=True)
+    profile_picture_thumb = models.CharField(max_length=500, blank=True, default='')
+    profile_picture_card = models.CharField(max_length=500, blank=True, default='')
+    profile_picture_profile = models.CharField(max_length=500, blank=True, default='')
     public_match   = models.BooleanField(default=True)
     created_at     = models.DateTimeField(auto_now_add=True)
     updated_at     = models.DateTimeField(auto_now=True)

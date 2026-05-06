@@ -96,6 +96,11 @@ const emptyMatchPreferenceValues: MatchPreferenceFormValues = {
   sizzle: false,
 };
 
+const MAX_PROFILE_PICTURE_BYTES = 4 * 1024 * 1024;
+const ALLOWED_PROFILE_PICTURE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const getProfilePreviewUrl = (profile?: UserProfile | null) =>
+  profile?.profile_picture_variants?.profile ?? profile?.profile_picture ?? null;
+
 const genderChoices = [
   { value: "male", label: "Male" },
   { value: "female", label: "Female" },
@@ -505,7 +510,7 @@ export function ProfileManager() {
         setProfile(existingProfile);
         setValues(existingProfile ? mapProfileToFormValues(existingProfile) : emptyValues);
         setProfilePictureFile(null);
-        setProfilePicturePreviewUrl(existingProfile?.profile_picture ?? null);
+        setProfilePicturePreviewUrl(getProfilePreviewUrl(existingProfile));
         setRemoveProfilePicture(false);
         if (existingProfile?.user) {
           setUser(existingProfile.user);
@@ -626,7 +631,7 @@ export function ProfileManager() {
   const handleReset = () => {
     setValues(profile ? mapProfileToFormValues(profile) : emptyValues);
     setProfilePictureFile(null);
-    setProfilePicturePreviewUrl(profile?.profile_picture ?? null);
+    setProfilePicturePreviewUrl(getProfilePreviewUrl(profile));
     setRemoveProfilePicture(false);
     setErrors({});
     setSuccessMessage(null);
@@ -640,13 +645,13 @@ export function ProfileManager() {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      setError("Profile picture must be an image file.");
+    if (!ALLOWED_PROFILE_PICTURE_TYPES.includes(file.type)) {
+      setError("Profile picture must be a JPEG, PNG, or WebP image.");
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Profile picture must be 5MB or smaller.");
+    if (file.size > MAX_PROFILE_PICTURE_BYTES) {
+      setError("Profile picture must be 4MB or smaller.");
       return;
     }
 
@@ -706,7 +711,7 @@ export function ProfileManager() {
       setProfile(savedProfile);
       setValues(mapProfileToFormValues(savedProfile));
       setProfilePictureFile(null);
-      setProfilePicturePreviewUrl(savedProfile.profile_picture ?? null);
+      setProfilePicturePreviewUrl(getProfilePreviewUrl(savedProfile));
       setRemoveProfilePicture(false);
       if (savedProfile.user) {
         setUser(savedProfile.user);
@@ -949,7 +954,7 @@ export function ProfileManager() {
                         Profile Picture
                       </span>
                       <input
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         className="block w-full text-sm text-foreground/72 file:mr-4 file:rounded-md file:border-0 file:bg-[#fdf1f0] file:px-4 file:py-2 file:text-sm file:font-bold file:text-[#901214] hover:file:bg-[#f5d5c8]"
                         type="file"
                         onChange={handleProfilePictureChange}

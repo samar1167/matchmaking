@@ -244,6 +244,14 @@ export const normalizeCompatibilityResults = (
       toStringValue(raw.matched_user_name) ??
       personLookup[personId] ??
       `Person ${index + 1}`;
+    const matchedUserPictureVariants = toObject(raw.matched_user_profile_picture_variants);
+    const personImageUrl =
+      toStringValue(matchedUserPictureVariants?.thumb) ??
+      toStringValue(matchedUserPictureVariants?.card) ??
+      toStringValue(matchedUserPictureVariants?.profile) ??
+      toStringValue(matchedUserPictureVariants?.original) ??
+      toStringValue(raw.matched_user_profile_picture) ??
+      undefined;
     const summary =
       toStringValue(raw.summary) ??
       toStringValue(raw.description) ??
@@ -256,6 +264,7 @@ export const normalizeCompatibilityResults = (
       id: `${personId}-${index}-${createdAt ?? "current"}`,
       personId,
       personName,
+      personImageUrl,
       matchType: resolveMatchType(raw),
       score,
       summary,
