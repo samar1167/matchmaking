@@ -11,6 +11,7 @@ export function usePlanAccess() {
   const setCredits = usePlanStore((state) => state.setCredits);
   const setParameters = usePlanStore((state) => state.setParameters);
   const [isLoading, setIsLoading] = useState(true);
+  const [plan, setPlan] = useState<Awaited<ReturnType<typeof planService.getCurrent>> | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -24,8 +25,10 @@ export function usePlanAccess() {
 
         if (planMeResult.status === "fulfilled") {
           setCredits(planMeResult.value.credits ?? 0);
+          setPlan(planMeResult.value);
         } else {
           setCredits(0);
+          setPlan(null);
         }
 
         if (parameterResult.status === "fulfilled") {
@@ -42,6 +45,7 @@ export function usePlanAccess() {
   return {
     credits,
     isLoading,
+    plan,
     parameters,
   };
 }

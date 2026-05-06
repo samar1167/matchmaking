@@ -54,6 +54,8 @@ const normalizeProfileListResponse = (payload: unknown): ProfileListResponse => 
   };
 };
 
+let getMeRequest: Promise<ProfileListResponse> | null = null;
+
 const serializeProfilePayload = (payload: CreateProfileRequest | UpdateProfileRequest) => {
   const shouldUseMultipart =
     payload.profile_picture instanceof File || payload.remove_profile_picture === true;
@@ -92,8 +94,16 @@ export const profileService = {
   },
 
   async getMe(): Promise<ProfileListResponse> {
-    const { data } = await apiClient.get("/profiles/me/");
-    return normalizeProfileListResponse(data);
+    if (!getMeRequest) {
+      getMeRequest = apiClient
+        .get("/profiles/me/")
+        .then(({ data }) => normalizeProfileListResponse(data))
+        .finally(() => {
+          getMeRequest = null;
+        });
+    }
+
+    return getMeRequest;
   },
 
   async createMe(payload: CreateProfileRequest): Promise<ProfileResponse> {

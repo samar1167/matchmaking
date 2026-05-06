@@ -43,6 +43,10 @@ const normalizeConnectionListResponse = (payload: unknown): ConnectionListRespon
   };
 };
 
+let receivedRequest: Promise<ConnectionListResponse> | null = null;
+let sentRequest: Promise<ConnectionListResponse> | null = null;
+let acceptedRequest: Promise<ConnectionListResponse> | null = null;
+
 export const connectionService = {
   async list(params?: { status?: string; role?: string }): Promise<ConnectionListResponse> {
     const { data } = await apiClient.get<unknown>("/connections/", { params });
@@ -55,18 +59,42 @@ export const connectionService = {
   },
 
   async received(): Promise<ConnectionListResponse> {
-    const { data } = await apiClient.get<unknown>("/connections/received/");
-    return normalizeConnectionListResponse(data);
+    if (!receivedRequest) {
+      receivedRequest = apiClient
+        .get<unknown>("/connections/received/")
+        .then(({ data }) => normalizeConnectionListResponse(data))
+        .finally(() => {
+          receivedRequest = null;
+        });
+    }
+
+    return receivedRequest;
   },
 
   async sent(): Promise<ConnectionListResponse> {
-    const { data } = await apiClient.get<unknown>("/connections/sent/");
-    return normalizeConnectionListResponse(data);
+    if (!sentRequest) {
+      sentRequest = apiClient
+        .get<unknown>("/connections/sent/")
+        .then(({ data }) => normalizeConnectionListResponse(data))
+        .finally(() => {
+          sentRequest = null;
+        });
+    }
+
+    return sentRequest;
   },
 
   async accepted(): Promise<ConnectionListResponse> {
-    const { data } = await apiClient.get<unknown>("/connections/accepted/");
-    return normalizeConnectionListResponse(data);
+    if (!acceptedRequest) {
+      acceptedRequest = apiClient
+        .get<unknown>("/connections/accepted/")
+        .then(({ data }) => normalizeConnectionListResponse(data))
+        .finally(() => {
+          acceptedRequest = null;
+        });
+    }
+
+    return acceptedRequest;
   },
 
   async request(matchedUserProfileId: number | string): Promise<Connection> {

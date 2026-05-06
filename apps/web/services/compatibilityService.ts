@@ -6,6 +6,10 @@ import type {
   TopMatchesResponse,
 } from "@/types/compatibility";
 
+let historyRequest: Promise<CompatibilityHistoryResponse> | null = null;
+let topMatchesRequest: Promise<TopMatchesResponse> | null = null;
+let transactionsRequest: Promise<CompatibilityHistoryResponse> | null = null;
+
 export const compatibilityService = {
   async calculate(payload: CompatibilityRequest): Promise<CompatibilityResponse> {
     const { data } = await apiClient.post<CompatibilityResponse>(
@@ -16,23 +20,41 @@ export const compatibilityService = {
   },
 
   async history(): Promise<CompatibilityHistoryResponse> {
-    const { data } = await apiClient.get<CompatibilityHistoryResponse>(
-      "/compatibility/history/",
-    );
-    return data;
+    if (!historyRequest) {
+      historyRequest = apiClient
+        .get<CompatibilityHistoryResponse>("/compatibility/history/")
+        .then(({ data }) => data)
+        .finally(() => {
+          historyRequest = null;
+        });
+    }
+
+    return historyRequest;
   },
 
   async transactions(): Promise<CompatibilityHistoryResponse> {
-    const { data } = await apiClient.get<CompatibilityHistoryResponse>(
-      "/compatibility/transactions/",
-    );
-    return data;
+    if (!transactionsRequest) {
+      transactionsRequest = apiClient
+        .get<CompatibilityHistoryResponse>("/compatibility/transactions/")
+        .then(({ data }) => data)
+        .finally(() => {
+          transactionsRequest = null;
+        });
+    }
+
+    return transactionsRequest;
   },
 
   async topMatches(): Promise<TopMatchesResponse> {
-    const { data } = await apiClient.get<TopMatchesResponse>(
-      "/compatibility/top_matches/",
-    );
-    return data;
+    if (!topMatchesRequest) {
+      topMatchesRequest = apiClient
+        .get<TopMatchesResponse>("/compatibility/top_matches/")
+        .then(({ data }) => data)
+        .finally(() => {
+          topMatchesRequest = null;
+        });
+    }
+
+    return topMatchesRequest;
   },
 };

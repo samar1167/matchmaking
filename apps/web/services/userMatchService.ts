@@ -77,9 +77,19 @@ const normalizeUserMatchListResponse = (payload: unknown): UserMatchListResponse
   };
 };
 
+let listRequest: Promise<UserMatchListResponse> | null = null;
+
 export const userMatchService = {
   async list(): Promise<UserMatchListResponse> {
-    const { data } = await apiClient.get("/user-matches/");
-    return normalizeUserMatchListResponse(data);
+    if (!listRequest) {
+      listRequest = apiClient
+        .get("/user-matches/")
+        .then(({ data }) => normalizeUserMatchListResponse(data))
+        .finally(() => {
+          listRequest = null;
+        });
+    }
+
+    return listRequest;
   },
 };

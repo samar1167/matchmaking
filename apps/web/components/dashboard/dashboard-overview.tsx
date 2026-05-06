@@ -603,7 +603,7 @@ function TopCompatibleRow({
 export function DashboardOverview() {
   const user = useAuthStore((state) => state.user);
   const setCredits = usePlanStore((state) => state.setCredits);
-  const { credits, parameters } = usePlanAccess();
+  const { credits, parameters, plan } = usePlanAccess();
   const searchParams = useSearchParams();
   const [history, setHistory] = useState<StoredCompatibilityResult[]>([]);
   const [topMatches, setTopMatches] = useState<StoredCompatibilityResult[]>([]);
@@ -639,16 +639,10 @@ export function DashboardOverview() {
           return;
         }
 
-        const [
-          historyResponse,
-          topMatchesResponse,
-          privatePersonsResponse,
-          planResponse,
-        ] = await Promise.allSettled([
+        const [historyResponse, topMatchesResponse, privatePersonsResponse] = await Promise.allSettled([
           compatibilityService.history(),
           compatibilityService.topMatches(),
           privatePersonsService.list(),
-          planService.getCurrent(),
         ]);
 
         if (historyResponse.status === "fulfilled") {
@@ -663,15 +657,10 @@ export function DashboardOverview() {
           setPrivatePersons(privatePersonsResponse.value.results ?? []);
         }
 
-        if (planResponse.status === "fulfilled") {
-          setPlanSummary(planResponse.value);
-        }
-
         if (
           historyResponse.status === "rejected" &&
           topMatchesResponse.status === "rejected" &&
-          privatePersonsResponse.status === "rejected" &&
-          planResponse.status === "rejected"
+          privatePersonsResponse.status === "rejected"
         ) {
           setError("Unable to load dashboard insights right now.");
         }
@@ -762,8 +751,9 @@ export function DashboardOverview() {
   }, [searchParams, setCredits]);
 
   const strongestMatch = topMatches[0] ?? null;
-  const availableCredits = planSummary?.credits ?? credits;
-  const creditsPerPurchase = planSummary?.credits_per_purchase ?? 10;
+  const resolvedPlanSummary = planSummary ?? plan;
+  const availableCredits = resolvedPlanSummary?.credits ?? credits;
+  const creditsPerPurchase = resolvedPlanSummary?.credits_per_purchase ?? 10;
 
   const displayName = user?.username || user?.first_name || user?.email || "";
   const recentAnalyses = history.slice(0, 3);

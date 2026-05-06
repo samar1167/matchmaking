@@ -7,12 +7,28 @@ import type {
   UpdatePrivatePersonRequest,
 } from "@/types/private-persons";
 
+const listRequests = new Map<string, Promise<PrivatePersonListResponse>>();
+
 export const privatePersonsService = {
   async list(page?: number): Promise<PrivatePersonListResponse> {
-    const { data } = await apiClient.get<PrivatePersonListResponse>("/private-persons/", {
-      params: page ? { page } : undefined,
-    });
-    return data;
+    const requestKey = String(page ?? "first");
+    const existingRequest = listRequests.get(requestKey);
+
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const request = apiClient
+      .get<PrivatePersonListResponse>("/private-persons/", {
+        params: page ? { page } : undefined,
+      })
+      .then(({ data }) => data)
+      .finally(() => {
+        listRequests.delete(requestKey);
+      });
+
+    listRequests.set(requestKey, request);
+    return request;
   },
 
   async getById(privatePersonId: string | number): Promise<PrivatePersonResponse> {

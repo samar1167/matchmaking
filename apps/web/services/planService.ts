@@ -100,15 +100,34 @@ const normalizePaymentHistoryResponse = (payload: unknown): PaymentHistoryRespon
   };
 };
 
+let getCurrentRequest: Promise<PlanMeResponse> | null = null;
+let getParametersRequest: Promise<PlanParametersResponse> | null = null;
+
 export const planService = {
   async getCurrent(): Promise<PlanMeResponse> {
-    const { data } = await apiClient.get("/plan/me/");
-    return normalizePlanMeResponse(data);
+    if (!getCurrentRequest) {
+      getCurrentRequest = apiClient
+        .get("/plan/me/")
+        .then(({ data }) => normalizePlanMeResponse(data))
+        .finally(() => {
+          getCurrentRequest = null;
+        });
+    }
+
+    return getCurrentRequest;
   },
 
   async getParameters(): Promise<PlanParametersResponse> {
-    const { data } = await apiClient.get<PlanParametersResponse>("/plan/parameters/");
-    return data;
+    if (!getParametersRequest) {
+      getParametersRequest = apiClient
+        .get<PlanParametersResponse>("/plan/parameters/")
+        .then(({ data }) => data)
+        .finally(() => {
+          getParametersRequest = null;
+        });
+    }
+
+    return getParametersRequest;
   },
 
   async getPaymentHistory(): Promise<PaymentHistoryResponse> {
