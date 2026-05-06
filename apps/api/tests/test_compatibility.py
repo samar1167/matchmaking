@@ -70,6 +70,21 @@ class TestCompatibility:
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
+    def test_transactions(self, profile_user_one, private_person, auth_headers_one):
+        check = requests.post(f"{BASE_URL}/compatibility/check/", json={
+            "matched_private_person_id": private_person["id"],
+        }, headers=auth_headers_one)
+        assert check.status_code == 200
+
+        resp = requests.get(f"{BASE_URL}/compatibility/transactions/", headers=auth_headers_one)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        assert "credit_type" in data[0]
+        assert "credits_remaining_after" in data[0]
+        assert "compatibility_score" in data[0]
+
     def test_top_matches(self, profile_user_one, auth_headers_one):
         resp = requests.get(f"{BASE_URL}/compatibility/top_matches/?limit=5",
                             headers=auth_headers_one)
@@ -83,4 +98,8 @@ class TestCompatibility:
 
     def test_history_unauthenticated(self):
         resp = requests.get(f"{BASE_URL}/compatibility/history/")
+        assert resp.status_code == 401
+
+    def test_transactions_unauthenticated(self):
+        resp = requests.get(f"{BASE_URL}/compatibility/transactions/")
         assert resp.status_code == 401

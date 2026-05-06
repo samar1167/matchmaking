@@ -7,6 +7,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .astrology_service import AstrologyService
 from .models import (
     UserProfile, UserMatchPreference, UserMatch, UserConnection, PrivatePerson, CompatibilityScore, CompatibilityParameter,
+    CompatibilityTransaction,
     PaymentRecord, UserPlan, AuthActionToken, ChatConversation, ChatMessage,
 )
 
@@ -568,3 +569,49 @@ class CompatibilityScoreSerializer(serializers.ModelSerializer):
         if request and hasattr(request.user, 'plan'):
             return request.user.plan.total_credits
         return 0
+
+
+class CompatibilityTransactionSerializer(serializers.ModelSerializer):
+    matched_user_name = serializers.SerializerMethodField()
+    is_private_match = serializers.SerializerMethodField()
+    parameters = serializers.SerializerMethodField()
+    upgrade_required = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CompatibilityTransaction
+        fields = (
+            'id', 'user',
+            'matched_user', 'matched_user_name',
+            'matched_private_person',
+            'compatibility_score',
+            'is_private_match',
+            'credit_type',
+            'is_paid',
+            'overall_score',
+            'credits_remaining_after',
+            'parameters',
+            'description',
+            'upgrade_required',
+            'created_at',
+        )
+        read_only_fields = fields
+
+    def get_matched_user_name(self, obj):
+        if obj.matched_private_person:
+            return obj.matched_private_person.name
+        if not obj.matched_user:
+            return None
+        user = obj.matched_user.user
+        return user.get_full_name() or user.username or user.email
+
+    def get_is_private_match(self, obj):
+        return obj.matched_private_person is not None
+
+    def get_parameters(self, obj):
+        score = obj.compatibility_score
+        if score is None:
+            return []
+        return CompatibilityScoreSerializer(score, context=self.context).data.get('parameters', [])
+
+    def get_upgrade_required(self, obj):
+        return not obj.is_paid

@@ -6,8 +6,10 @@ import jwt
 from datetime import datetime, timezone, timedelta, time
 import json
 import zoneinfo
+from urllib.parse import urljoin
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,21 @@ class AstrologyService:
     TIMEOUT = 15
 
     @classmethod
+    def _get_setting(cls, name: str) -> str:
+        return (getattr(settings, name, '') or '').strip()
+
+    @classmethod
+    def _get_base_url(cls) -> str:
+        base_url = cls._get_setting('DILAANU_BASE_URL').rstrip('/')
+        if not base_url:
+            raise ImproperlyConfigured("DILAANU_BASE_URL is not configured")
+        if not base_url.startswith(('http://', 'https://')):
+            raise ImproperlyConfigured(
+                "DILAANU_BASE_URL must include http:// or https://"
+            )
+        return base_url
+
+    @classmethod
     def get_compatibility(cls, user_profile, target):
         user_birth = cls._birth_data(user_profile)
         target_birth = cls._birth_data(target)
@@ -31,13 +48,16 @@ class AstrologyService:
     @classmethod
     def _generate_token(cls):
         now = datetime.now(timezone.utc)
+        base_url = cls._get_base_url()
+        email = cls._get_setting('DILAANU_EMAIL')
+        secret_key = cls._get_setting('DILAANU_SECRET_KEY')
         payload = {
-            'iss': cls.BASE_URL,
-            'sub': cls.EMAIL,
+            'iss': base_url,
+            'sub': email,
             'exp': now + timedelta(minutes=5),
             'iat': now
         }
-        return jwt.encode(payload, cls.SECRET_KEY, algorithm='HS256')
+        return jwt.encode(payload, secret_key, algorithm='HS256')
 
     @classmethod
     def _generate_tz_offset(cls, timezone):
@@ -86,10 +106,10 @@ class AstrologyService:
             token = cls._generate_token()
             headers = {
                 'Authorization': f'Bearer {token}',
-                'Public-Key': cls.PUBLIC_KEY,
+                'Public-Key': cls._get_setting('DILAANU_PUBLIC_KEY'),
                 'Content-Type': 'application/json'
             }
-            url = f"{cls.BASE_URL}/api/{endpoint}"
+            url = urljoin(f"{cls._get_base_url()}/", f"api/{endpoint.lstrip('/')}")
             
             response = requests.post(url, json=data, headers=headers, timeout=30)
             
@@ -110,6 +130,9 @@ class AstrologyService:
         except requests.exceptions.ConnectionError:
             logger.error(f"Connection error for endpoint {endpoint}")
             raise Exception("API connection failed")
+        except ImproperlyConfigured as e:
+            logger.error(f"Dilaanu API configuration error: {e}")
+            raise Exception(str(e))
         except requests.exceptions.RequestException as e:
             logger.error(f"Request error for endpoint {endpoint}: {e}")
             raise Exception(f"API request failed: {str(e)}")

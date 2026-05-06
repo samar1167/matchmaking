@@ -408,15 +408,21 @@ function CompatibilityDetailsDialog({
 function CreditUseHistoryDialog({
   currentPage,
   history,
+  isLoading,
+  error,
   onClose,
   onOpenDetails,
   onPageChange,
+  onRetry,
 }: {
   currentPage: number;
   history: StoredCompatibilityResult[];
+  isLoading: boolean;
+  error: string | null;
   onClose: () => void;
   onOpenDetails: (result: StoredCompatibilityResult) => void;
   onPageChange: (page: number) => void;
+  onRetry: () => void;
 }) {
   const pageSize = 5;
   const totalPages = Math.max(1, Math.ceil(history.length / pageSize));
@@ -453,7 +459,22 @@ function CreditUseHistoryDialog({
           </button>
         </div>
 
-        {history.length > 0 ? (
+        {isLoading ? (
+          <div className="mt-6 rounded-xl border border-dashed border-[#C07771] bg-[#fffafa] p-6 text-sm leading-6 text-[#2d1718]/65">
+            Loading your latest credit use history...
+          </div>
+        ) : error ? (
+          <div className="mt-6 rounded-xl border border-[#EABFB9] bg-[#fffafa] p-6">
+            <p className="text-sm leading-6 text-[#901214]">{error}</p>
+            <button
+              className="mt-4 inline-flex min-h-10 items-center justify-center rounded-md border border-[#C07771] bg-[#fafafa] px-4 text-sm font-bold text-[#901214] transition hover:border-[#901214]"
+              type="button"
+              onClick={onRetry}
+            >
+              Try again
+            </button>
+          </div>
+        ) : history.length > 0 ? (
           <>
             <div className="mt-6 overflow-hidden rounded-xl border border-[#EABFB9] bg-[#fffafa]">
               <div className="grid grid-cols-[minmax(0,1.4fr)_auto_auto_auto] gap-4 border-b border-[#EABFB9] bg-[#fdf1f0] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em] text-[#7F533E]">
@@ -590,7 +611,10 @@ export function DashboardOverview() {
   const [planSummary, setPlanSummary] = useState<PlanMeResponse | null>(null);
   const [selectedResult, setSelectedResult] = useState<StoredCompatibilityResult | null>(null);
   const [isCreditUseHistoryOpen, setIsCreditUseHistoryOpen] = useState(false);
+  const [creditUseHistory, setCreditUseHistory] = useState<StoredCompatibilityResult[]>([]);
   const [creditUseHistoryPage, setCreditUseHistoryPage] = useState(1);
+  const [isCreditUseHistoryLoading, setIsCreditUseHistoryLoading] = useState(false);
+  const [creditUseHistoryError, setCreditUseHistoryError] = useState<string | null>(null);
   const [isPurchasingCredits, setIsPurchasingCredits] = useState(false);
   const [purchaseMessage, setPurchaseMessage] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
@@ -746,9 +770,25 @@ export function DashboardOverview() {
   const topCompatiblePeople = (topMatches.length > 0 ? topMatches : history).slice(0, 3);
   const matchesFound = history.filter((result) => result.score >= 50).length;
 
+  const loadCreditUseHistory = async () => {
+    try {
+      setIsCreditUseHistoryLoading(true);
+      setCreditUseHistoryError(null);
+
+      const historyResponse = await compatibilityService.transactions();
+      setCreditUseHistory(normalizeCompatibilityResults(historyResponse));
+    } catch {
+      setCreditUseHistory([]);
+      setCreditUseHistoryError("Unable to load fresh credit use history right now.");
+    } finally {
+      setIsCreditUseHistoryLoading(false);
+    }
+  };
+
   const openCreditUseHistory = () => {
     setCreditUseHistoryPage(1);
     setIsCreditUseHistoryOpen(true);
+    void loadCreditUseHistory();
   };
 
   const closeCreditUseHistory = () => {
@@ -986,13 +1026,18 @@ export function DashboardOverview() {
       {isCreditUseHistoryOpen ? (
         <CreditUseHistoryDialog
           currentPage={creditUseHistoryPage}
-          history={history}
+          error={creditUseHistoryError}
+          history={creditUseHistory}
+          isLoading={isCreditUseHistoryLoading}
           onClose={closeCreditUseHistory}
           onOpenDetails={(result) => {
             setSelectedResult(result);
             closeCreditUseHistory();
           }}
           onPageChange={setCreditUseHistoryPage}
+          onRetry={() => {
+            void loadCreditUseHistory();
+          }}
         />
       ) : null}
     </main>

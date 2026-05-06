@@ -22,6 +22,13 @@ export const compatibilityService = {
     return data;
   },
 
+  async transactions(): Promise<CompatibilityHistoryResponse> {
+    const { data } = await apiClient.get<CompatibilityHistoryResponse>(
+      "/compatibility/transactions/",
+    );
+    return data;
+  },
+
   async topMatches(): Promise<TopMatchesResponse> {
     const { data } = await apiClient.get<TopMatchesResponse>(
       "/compatibility/top_matches/",

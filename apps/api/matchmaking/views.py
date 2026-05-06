@@ -22,6 +22,7 @@ from .serializers import (
     RegisterSerializer, UserProfileSerializer, UserMatchPreferenceSerializer, PrivatePersonSerializer,
     UserMatchSerializer, UserConnectionSerializer, UserConnectionRequestSerializer,
     CompatibilityScoreSerializer, CompatibilityRequestSerializer,
+    CompatibilityTransactionSerializer,
     ChatConversationSerializer, ChatMessageSerializer, ChatMessageCreateSerializer,
 )
 from .serializers import (
@@ -794,6 +795,23 @@ class CompatibilityViewSet(viewsets.ViewSet):
         profile = get_object_or_404(UserProfile, user=request.user)
         qs = CompatibilityScore.objects.filter(user=profile).order_by('-created_at')
         return Response(CompatibilityScoreSerializer(qs, many=True, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'])
+    def transactions(self, request):
+        profile = get_object_or_404(UserProfile, user=request.user)
+        qs = (
+            CompatibilityTransaction.objects
+            .filter(user=profile)
+            .select_related(
+                'matched_user__user',
+                'matched_private_person',
+                'compatibility_score',
+            )
+            .order_by('-created_at')
+        )
+        return Response(
+            CompatibilityTransactionSerializer(qs, many=True, context={'request': request}).data
+        )
 
     @action(detail=False, methods=['get'])
     def top_matches(self, request):
