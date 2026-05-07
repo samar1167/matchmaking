@@ -10,11 +10,12 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth.password_validation import validate_password
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import IntegrityError
 from django.db import transaction as db_transaction
 from django.db.models import Case, Exists, F, IntegerField, OuterRef, Q, Sum, When
 from django.shortcuts import get_object_or_404
+from django.utils.html import escape
 from django.utils import timezone
 from .models import UserPlan, PaymentRecord, FeatureFlag, CompatibilityParameter
 from .models import UserProfile, UserMatchPreference, UserMatch, UserConnection, PrivatePerson, CompatibilityScore, CompatibilityTransaction, AuthActionToken, ChatConversation, ChatMessage
@@ -90,10 +91,16 @@ def send_auth_action_email(user, token_record):
         path = settings.EMAIL_VERIFICATION_PATH
         subject = 'Verify your Matchmaking account'
         action_text = 'verify your email address'
+        title = 'Confirm your email address'
+        intro = 'Thanks for joining Matchmaking. Verify your email to activate your account and start exploring compatibility insights.'
+        button_label = 'Verify email address'
     else:
         path = settings.PASSWORD_RESET_PATH
         subject = 'Reset your Matchmaking password'
         action_text = 'reset your password'
+        title = 'Reset your password'
+        intro = 'We received a request to reset your Matchmaking password. Use the button below to choose a new one.'
+        button_label = 'Reset password'
 
     action_url = f"{base_url}{path}?token={token_record.token}"
     message = (
@@ -102,13 +109,48 @@ def send_auth_action_email(user, token_record):
         f"{action_url}\n\n"
         f"This link expires at {token_record.expires_at.isoformat()}.\n"
     )
-    send_mail(
+    html_message = f"""
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background-color:#f6efe8;font-family:Arial,sans-serif;color:#241815;">
+    <div style="margin:0 auto;max-width:640px;padding:32px 20px;">
+      <div style="background:linear-gradient(135deg,#901214 0%,#a22e34 58%,#7f533e 100%);border-radius:28px;padding:40px 32px;color:#ffffff;box-shadow:0 24px 60px rgba(36,24,21,0.18);">
+        <div style="font-size:12px;letter-spacing:0.28em;text-transform:uppercase;font-weight:700;color:#f5d5c8;">Matchmaking</div>
+        <h1 style="margin:20px 0 12px;font-size:34px;line-height:1.1;font-weight:700;">{escape(title)}</h1>
+        <p style="margin:0;font-size:16px;line-height:1.7;color:rgba(255,255,255,0.82);">{escape(intro)}</p>
+      </div>
+      <div style="margin-top:-18px;background:#fffaf7;border:1px solid #efd6ca;border-radius:24px;padding:32px;box-shadow:0 18px 40px rgba(36,24,21,0.08);">
+        <p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:#5c4038;">Hello,</p>
+        <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#5c4038;">
+          Click the button below to {escape(action_text)}.
+        </p>
+        <div style="margin:0 0 24px;">
+          <a href="{escape(action_url)}" style="display:inline-block;background:#901214;border-radius:999px;padding:14px 24px;color:#ffffff;font-size:15px;font-weight:700;line-height:1;text-decoration:none;">
+            {escape(button_label)}
+          </a>
+        </div>
+        <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#5c4038;">
+          If the button does not work, copy and paste this link into your browser:
+        </p>
+        <p style="margin:0 0 20px;word-break:break-word;">
+          <a href="{escape(action_url)}" style="color:#901214;text-decoration:none;">{escape(action_url)}</a>
+        </p>
+        <p style="margin:0;font-size:13px;line-height:1.7;color:#7b645d;">
+          This link expires at {escape(token_record.expires_at.isoformat())}.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
+"""
+    email = EmailMultiAlternatives(
         subject,
         message,
         settings.DEFAULT_FROM_EMAIL,
         [user.email],
-        fail_silently=False,
     )
+    email.attach_alternative(html_message, 'text/html')
+    email.send(fail_silently=False)
 
 
 def issue_and_send_token(user, purpose):

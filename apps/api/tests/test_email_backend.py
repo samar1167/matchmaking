@@ -1,9 +1,15 @@
 from unittest.mock import Mock, patch
+from datetime import timedelta
 
+from django.contrib.auth.models import User
 from django.core.mail import EmailMultiAlternatives
-from django.test import SimpleTestCase, override_settings
+from django.core import mail
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 
 from matchmaking.email_backend import SESBoto3EmailBackend
+from matchmaking.models import AuthActionToken
+from matchmaking.views import send_auth_action_email
 
 
 class SESBoto3EmailBackendTests(SimpleTestCase):
@@ -59,3 +65,41 @@ class SESBoto3EmailBackendTests(SimpleTestCase):
 
         assert sent_count == 0
         mock_boto_client.assert_not_called()
+
+
+@override_settings(
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    DEFAULT_FROM_EMAIL='noreply@example.com',
+    FRONTEND_BASE_URL='https://app.example.com',
+    EMAIL_VERIFICATION_PATH='/verify-email',
+    PASSWORD_RESET_PATH='/reset-password',
+)
+class AuthActionEmailTests(TestCase):
+    def test_verification_email_includes_html_button(self):
+        user = User.objects.create_user(
+            username='verify@example.com',
+            email='verify@example.com',
+            password='SecretPass123!',
+            is_active=False,
+        )
+        token_record = AuthActionToken.objects.create(
+            user=user,
+            purpose=AuthActionToken.PURPOSE_EMAIL_VERIFICATION,
+            token='verify-token-123',
+            expires_at=timezone.now() + timedelta(hours=24),
+        )
+
+        send_auth_action_email(user, token_record)
+
+        assert len(mail.outbox) == 1
+        message = mail.outbox[0]
+        assert message.subject == 'Verify your Matchmaking account'
+        assert message.body
+        assert 'verify your email address' in message.body.lower()
+        assert 'https://app.example.com/verify-email?token=verify-token-123' in message.body
+        assert len(message.alternatives) == 1
+        html_body, mimetype = message.alternatives[0]
+        assert mimetype == 'text/html'
+        assert 'Verify email address' in html_body
+        assert 'https://app.example.com/verify-email?token=verify-token-123' in html_body
+        assert 'background:#901214' in html_body

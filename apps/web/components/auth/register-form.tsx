@@ -68,7 +68,11 @@ export function RegisterForm() {
             email,
             password,
           });
-          router.replace("/login");
+          router.replace(
+            `/login?message=${encodeURIComponent(
+              "Registration successful. Check your email for a verification link, then verify your account before signing in.",
+            )}`,
+          );
         } catch (error) {
           if (isAxiosError<ApiErrorResponse | Record<string, string[]>>(error)) {
             const data = error.response?.data;
@@ -152,7 +156,7 @@ export function RegisterForm() {
           </form>
 
           <p className="mt-8 text-sm leading-7 text-foreground/68">
-            Registration redirects to sign in after success. Already registered?{" "}
+            Registration redirects to sign in and asks you to verify your email first. Already registered?{" "}
             <Link
               className="font-semibold text-primary transition hover:text-accent"
               href="/login"

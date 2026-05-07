@@ -2,7 +2,7 @@
 
 import { isAxiosError } from "axios";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { AuthHero, AuthShell, AlertMessage, BodyText } from "@/components/ui/design-system";
 import { Button } from "@/components/ui/button";
@@ -89,10 +89,12 @@ const extractLoginErrorMessage = (error: unknown, fallback: string) => {
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const setSession = useAuthStore((state) => state.setSession);
   const [form, setForm] = useState<LoginRequest>(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const registrationMessage = searchParams.get("message");
 
   const handleChange = (field: keyof LoginRequest, value: string) => {
     setForm((current) => ({
@@ -163,6 +165,7 @@ export function LoginForm() {
               onChange={(event) => handleChange("password", event.target.value)}
             />
 
+            {registrationMessage ? <AlertMessage>{registrationMessage}</AlertMessage> : null}
             {error ? <AlertMessage>{error}</AlertMessage> : null}
 
             <Button type="submit" disabled={isPending} className="w-full py-3.5">
