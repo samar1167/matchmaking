@@ -21,6 +21,6 @@ python manage.py collectstatic --noinput
 
 exec daphne \
     --bind 0.0.0.0 \
-    --port 8000 \
+    --port 8047 \
     --access-log /app/matchmaking_project/logs/access.log \
     config.asgi:application

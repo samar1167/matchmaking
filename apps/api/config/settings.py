@@ -106,7 +106,7 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
 }
 
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000').split(',')
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3047').split(',')
 DILAANU_EMAIL = config('DILAANU_EMAIL', default='')
 DILAANU_BASE_URL = config('DILAANU_BASE_URL', default='')
 DILAANU_PUBLIC_KEY = config('DILAANU_PUBLIC_KEY', default='')
@@ -129,7 +129,7 @@ AWS_SES_ACCESS_KEY_ID = config('AWS_SES_ACCESS_KEY_ID', default='').strip()
 AWS_SES_SECRET_ACCESS_KEY = config('AWS_SES_SECRET_ACCESS_KEY', default='').strip()
 AWS_SES_SESSION_TOKEN = config('AWS_SES_SESSION_TOKEN', default='').strip()
 AWS_SES_CONFIGURATION_SET = config('AWS_SES_CONFIGURATION_SET', default='').strip()
-FRONTEND_BASE_URL = config('FRONTEND_BASE_URL', default='http://localhost:3000')
+FRONTEND_BASE_URL = config('FRONTEND_BASE_URL', default='http://localhost:3047')
 STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
 STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
 EMAIL_VERIFICATION_PATH = config('EMAIL_VERIFICATION_PATH', default='/verify-email')
@@ -142,12 +142,17 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 USE_S3_MEDIA_STORAGE = config('USE_S3_MEDIA_STORAGE', default=False, cast=bool)
+USE_S3_STATIC_STORAGE = config('USE_S3_STATIC_STORAGE', default=False, cast=bool)
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='').strip()
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='').strip()
 AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='').strip()
+AWS_STATIC_BUCKET_NAME = config('AWS_STATIC_BUCKET_NAME', default='').strip()
 AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='').strip()
 AWS_S3_ENDPOINT_URL = config('AWS_S3_ENDPOINT_URL', default='').strip() or None
 AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='').strip() or None
+AWS_STATIC_CUSTOM_DOMAIN = config('AWS_STATIC_CUSTOM_DOMAIN', default='').strip() or None
+AWS_MEDIA_LOCATION = config('AWS_MEDIA_LOCATION', default='media').strip('/') or 'media'
+AWS_STATIC_LOCATION = config('AWS_STATIC_LOCATION', default='static').strip('/') or 'static'
 AWS_S3_OBJECT_PARAMETERS = {
     'CacheControl': config('AWS_S3_CACHE_CONTROL', default='max-age=86400'),
 }
@@ -161,43 +166,80 @@ if USE_S3_MEDIA_STORAGE:
         raise ImproperlyConfigured('AWS_STORAGE_BUCKET_NAME is required when USE_S3_MEDIA_STORAGE is enabled.')
 
     s3_media_options = {
-        'access_key': AWS_ACCESS_KEY_ID,
-        'secret_key': AWS_SECRET_ACCESS_KEY,
         'bucket_name': AWS_STORAGE_BUCKET_NAME,
         'region_name': AWS_S3_REGION_NAME or None,
         'default_acl': AWS_DEFAULT_ACL,
         'querystring_auth': AWS_QUERYSTRING_AUTH,
         'querystring_expire': AWS_QUERYSTRING_EXPIRE,
         'file_overwrite': AWS_S3_FILE_OVERWRITE,
+        'location': AWS_MEDIA_LOCATION,
         'object_parameters': AWS_S3_OBJECT_PARAMETERS,
     }
+    if AWS_ACCESS_KEY_ID:
+        s3_media_options['access_key'] = AWS_ACCESS_KEY_ID
+    if AWS_SECRET_ACCESS_KEY:
+        s3_media_options['secret_key'] = AWS_SECRET_ACCESS_KEY
     if AWS_S3_ENDPOINT_URL:
         s3_media_options['endpoint_url'] = AWS_S3_ENDPOINT_URL
     if AWS_S3_CUSTOM_DOMAIN:
         s3_media_options['custom_domain'] = AWS_S3_CUSTOM_DOMAIN
+        MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_MEDIA_LOCATION}/'
 
-    STORAGES = {
-        'default': {
-            'BACKEND': 'storages.backends.s3.S3Storage',
-            'OPTIONS': s3_media_options,
-        },
-        'staticfiles': {
-            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
-        },
+if USE_S3_STATIC_STORAGE:
+    static_bucket_name = AWS_STATIC_BUCKET_NAME or AWS_STORAGE_BUCKET_NAME
+    if not static_bucket_name:
+        raise ImproperlyConfigured(
+            'AWS_STATIC_BUCKET_NAME or AWS_STORAGE_BUCKET_NAME is required when USE_S3_STATIC_STORAGE is enabled.'
+        )
+
+    s3_static_options = {
+        'bucket_name': static_bucket_name,
+        'region_name': AWS_S3_REGION_NAME or None,
+        'default_acl': AWS_DEFAULT_ACL,
+        'querystring_auth': False,
+        'file_overwrite': True,
+        'location': AWS_STATIC_LOCATION,
+        'object_parameters': AWS_S3_OBJECT_PARAMETERS,
     }
-else:
-    STORAGES = {
-        'default': {
-            'BACKEND': 'django.core.files.storage.FileSystemStorage',
-            'OPTIONS': {
-                'location': MEDIA_ROOT,
-                'base_url': MEDIA_URL,
-            },
-        },
-        'staticfiles': {
-            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
-        },
+    if AWS_ACCESS_KEY_ID:
+        s3_static_options['access_key'] = AWS_ACCESS_KEY_ID
+    if AWS_SECRET_ACCESS_KEY:
+        s3_static_options['secret_key'] = AWS_SECRET_ACCESS_KEY
+    if AWS_S3_ENDPOINT_URL:
+        s3_static_options['endpoint_url'] = AWS_S3_ENDPOINT_URL
+    static_custom_domain = AWS_STATIC_CUSTOM_DOMAIN or AWS_S3_CUSTOM_DOMAIN
+    if static_custom_domain:
+        s3_static_options['custom_domain'] = static_custom_domain
+        STATIC_URL = f'https://{static_custom_domain}/{AWS_STATIC_LOCATION}/'
+    else:
+        STATIC_URL = f'https://{static_bucket_name}.s3.amazonaws.com/{AWS_STATIC_LOCATION}/'
+
+default_storage = {
+    'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    'OPTIONS': {
+        'location': MEDIA_ROOT,
+        'base_url': MEDIA_URL,
+    },
+}
+if USE_S3_MEDIA_STORAGE:
+    default_storage = {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': s3_media_options,
     }
+
+staticfiles_storage = {
+    'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+}
+if USE_S3_STATIC_STORAGE:
+    staticfiles_storage = {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': s3_static_options,
+    }
+
+STORAGES = {
+    'default': default_storage,
+    'staticfiles': staticfiles_storage,
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LANGUAGE_CODE = 'en-us'

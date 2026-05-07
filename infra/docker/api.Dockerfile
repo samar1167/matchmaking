@@ -19,5 +19,5 @@ COPY apps/api /app
 RUN mkdir -p /app/staticfiles /app/media /app/logs
 RUN chmod +x /app/entrypoint.sh
 
-EXPOSE 8000
+EXPOSE 8047
 CMD ["/app/entrypoint.sh"]

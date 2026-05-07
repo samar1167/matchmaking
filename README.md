@@ -18,7 +18,7 @@ Combined monorepo for the matchmaking backend and frontend.
 2. Start the stack:
    - `docker compose --env-file .env -f compose.yml -f compose.dev.yml up --build`
 
-Frontend runs on `http://localhost:3000` and backend on `http://localhost:8000`.
+Frontend runs on `http://localhost:3047` and backend on `http://localhost:8047`.
 
 ## Profile Pictures on S3
 
@@ -27,10 +27,15 @@ The API can store uploaded profile pictures in AWS S3.
 Set these variables in `apps/api/.env` to enable it:
 
 - `USE_S3_MEDIA_STORAGE=True`
-- `AWS_ACCESS_KEY_ID=...`
-- `AWS_SECRET_ACCESS_KEY=...`
 - `AWS_STORAGE_BUCKET_NAME=...`
 - `AWS_S3_REGION_NAME=...`
+
+Credentials can come from either:
+
+- `AWS_ACCESS_KEY_ID=...`
+- `AWS_SECRET_ACCESS_KEY=...`
+
+Or, when running on AWS, from the ECS task role or another IAM role in the default AWS credential chain.
 
 Optional settings:
 
@@ -40,6 +45,30 @@ Optional settings:
 - `AWS_S3_CACHE_CONTROL=max-age=86400`
 
 If `USE_S3_MEDIA_STORAGE` is not enabled, uploads fall back to local Django media storage.
+
+## Django Static Files on S3
+
+The API can also publish Django static files to S3 during `collectstatic`, which is useful for ECS deployments without a reverse proxy serving `/static/`.
+
+Set these variables in `apps/api/.env`:
+
+- `USE_S3_STATIC_STORAGE=True`
+- `AWS_S3_REGION_NAME=...`
+
+Use either:
+
+- `AWS_STATIC_BUCKET_NAME=...`
+
+Or reuse the media bucket:
+
+- `AWS_STORAGE_BUCKET_NAME=...`
+
+Optional settings:
+
+- `AWS_STATIC_CUSTOM_DOMAIN=static.example.com`
+- `AWS_STATIC_LOCATION=static`
+
+When S3 static storage is enabled, `collectstatic` uploads files to that S3 location and Django serves static asset URLs from S3 instead of the local filesystem.
 
 ## Email via AWS SES
 
@@ -75,7 +104,7 @@ VS Code configs are included in `.vscode/launch.json`.
 - Local debug:
   - open the workspace in VS Code
   - select `Django: Local manage.py`
-  - start debugging to run `apps/api/manage.py runserver 0.0.0.0:8000`
+  - start debugging to run `apps/api/manage.py runserver 0.0.0.0:8047`
 - Docker debug:
   - rebuild the API image so `debugpy` is installed:
     - `docker compose --env-file .env -f compose.yml -f compose.dev.yml -f compose.debug.yml build api`
@@ -83,10 +112,10 @@ VS Code configs are included in `.vscode/launch.json`.
     - `docker compose --env-file .env -f compose.yml -f compose.dev.yml -f compose.debug.yml up`
   - in VS Code, select `Django: Attach to Docker`
 
-The debug overlay exposes port `5678` for `debugpy` and keeps the usual Django server on `8000`.
+The debug overlay exposes port `5678` for `debugpy` and keeps the usual Django server on `8047`.
 
 ## Production-style run
 
 `docker compose --env-file .env -f compose.yml -f compose.prod.yml up -d --build`
 
-The production compose overlay exposes the frontend on `http://localhost:3000` and the backend on `http://localhost:8000` directly, without a repository-managed reverse proxy.
+The production compose overlay exposes the frontend on `http://localhost:3047` and the backend on `http://localhost:8047` directly, without a repository-managed reverse proxy.
