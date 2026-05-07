@@ -6,7 +6,6 @@ Combined monorepo for the matchmaking backend and frontend.
 
 - `apps/api` - Django backend
 - `apps/web` - Next.js frontend
-- `infra/nginx` - Nginx config for production routing
 - `infra/mysql` - MySQL init scripts
 - `infra/docker` - Dockerfiles for app images
 
@@ -89,3 +88,5 @@ The debug overlay exposes port `5678` for `debugpy` and keeps the usual Django s
 ## Production-style run
 
 `docker compose --env-file .env -f compose.yml -f compose.prod.yml up -d --build`
+
+The production compose overlay exposes the frontend on `http://localhost:3000` and the backend on `http://localhost:8000` directly, without a repository-managed reverse proxy.
