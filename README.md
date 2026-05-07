@@ -42,6 +42,33 @@ Optional settings:
 
 If `USE_S3_MEDIA_STORAGE` is not enabled, uploads fall back to local Django media storage.
 
+## Email via AWS SES
+
+The API can send transactional emails such as account verification and password reset through AWS SES using `boto3`.
+
+Set these variables in `apps/api/.env`:
+
+- `USE_AWS_SES_EMAIL=True`
+- `DEFAULT_FROM_EMAIL=verified-sender@yourdomain.com`
+- `AWS_SES_REGION_NAME=ap-south-1`
+
+Credentials can either reuse the existing AWS credentials already used for S3:
+
+- `AWS_ACCESS_KEY_ID=...`
+- `AWS_SECRET_ACCESS_KEY=...`
+
+Or you can provide SES-specific credentials:
+
+- `AWS_SES_ACCESS_KEY_ID=...`
+- `AWS_SES_SECRET_ACCESS_KEY=...`
+- `AWS_SES_SESSION_TOKEN=...`
+
+Optional setting:
+
+- `AWS_SES_CONFIGURATION_SET=transactional`
+
+If `USE_AWS_SES_EMAIL` is not enabled, Django continues using the configured `EMAIL_BACKEND` value, which defaults to the console backend for local development.
+
 ## Django debugging
 
 VS Code configs are included in `.vscode/launch.json`.
