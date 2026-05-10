@@ -33,10 +33,6 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     env_file:
       - ./apps/api/.env
-    environment:
-      DB_HOST: db
-      DB_PORT: 3306
-      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy

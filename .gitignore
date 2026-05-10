@@ -13,3 +13,5 @@ apps/api/media/
 apps/api/logs/
 
 .mysql-data/
+
+global-bundle.pem

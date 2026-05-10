@@ -103,6 +103,7 @@ def send_auth_action_email(user, token_record):
         button_label = 'Reset password'
 
     action_url = f"{base_url}{path}?token={token_record.token}"
+    print(f"Sending email to {user.email} with action URL: {action_url}")  # Debug print
     message = (
         f"Hello,\n\n"
         f"Use the link below to {action_text}:\n"

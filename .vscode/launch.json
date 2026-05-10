@@ -14,13 +14,13 @@
       "django": true,
       "justMyCode": true,
       "envFile": "${workspaceFolder}/apps/api/.env",
-      "env": {
-        "DJANGO_SETTINGS_MODULE": "config.settings",
-        "DEBUG": "True",
-        "DB_HOST": "127.0.0.1",
-        "DB_PORT": "3306",
-        "REDIS_URL": ""
-      }
+      // "env": {
+      //   "DJANGO_SETTINGS_MODULE": "config.settings",
+      //   "DEBUG": "True",
+      //   "DB_HOST": "luster-mysql-dev.cng60owiytw8.us-west-1.rds.amazonaws.com",
+      //   "DB_PORT": "3306",
+      //   "REDIS_URL": ""
+      // }
     },
     {
       "name": "Django: Attach to Docker",
@@ -47,14 +47,14 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "envFile": "${workspaceFolder}/apps/api/.env",
-      "env": {
-        "DJANGO_SETTINGS_MODULE": "config.settings",
-        "DEBUG": "True",
-        "DB_HOST": "127.0.0.1",
-        "DB_PORT": "3306",
-        "REDIS_URL": "",
-        "PYTHONPATH": "${workspaceFolder}/apps/api"
-      }
+      // "env": {
+      //   "DJANGO_SETTINGS_MODULE": "config.settings",
+      //   "DEBUG": "True",
+      //   "DB_HOST": "127.0.0.1",
+      //   "DB_PORT": "3306",
+      //   "REDIS_URL": "",
+      //   "PYTHONPATH": "${workspaceFolder}/apps/api"
+      // }
     }
   ]
 }

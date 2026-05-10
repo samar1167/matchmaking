@@ -12,9 +12,9 @@ done
 
 echo "MySQL ready."
 
-cd /app/matchmaking_project
+cd /app
 
-mkdir -p /app/matchmaking_project/logs
+mkdir -p /app/logs
 
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
@@ -22,5 +22,5 @@ python manage.py collectstatic --noinput
 exec daphne \
     --bind 0.0.0.0 \
     --port 8047 \
-    --access-log /app/matchmaking_project/logs/access.log \
+    --access-log /app/logs/access.log \
     config.asgi:application

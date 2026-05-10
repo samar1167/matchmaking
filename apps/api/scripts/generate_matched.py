@@ -39,10 +39,26 @@ from matchmaking.models import UserMatch, UserProfile
 
 User = get_user_model()
 USER_PROFILE_FIELDS = {field.name for field in UserProfile._meta.get_fields()}
+MIN_MATCH_SCORE = 10
 
 
 def profile_has_field(field_name):
     return field_name in USER_PROFILE_FIELDS
+
+
+def has_preference_value(value):
+    return bool(value) and value != "any"
+
+
+def candidate_preference_matches(candidate_profile, preference_field, expected_value):
+    if not has_preference_value(expected_value):
+        return False
+
+    candidate_pref = getattr(candidate_profile.user, "match_preferences", None)
+    if not candidate_pref:
+        return False
+
+    return getattr(candidate_pref, preference_field, None) == expected_value
 
 
 def age_from_birth_date(date_of_birth):
@@ -67,11 +83,12 @@ def same_month_day_years_ago(value, years):
 # -----------------------------
 # Candidate Fetching
 # -----------------------------
-def get_candidates(user_profile, pref, limit=10):
+def get_candidates(user_profile, pref, limit=25):
     qs = UserProfile.objects.exclude(id=user_profile.id).select_related(
         "user",
         "user__match_preferences"
     )
+    qs = qs.filter(public_match=True)
 
     # -------- Gender filter --------
     if pref.preferred_gender and pref.preferred_gender != "any":
@@ -90,29 +107,11 @@ def get_candidates(user_profile, pref, limit=10):
             earliest_birth_date = same_month_day_years_ago(today, pref.preferred_age_max + 1)
             qs = qs.filter(date_of_birth__gt=earliest_birth_date)
 
-    # -------- Relationship intent --------
-    if (
-        profile_has_field("relationship_intent")
-        and pref.preferred_relationship_intent
-        and pref.preferred_relationship_intent != "any"
-    ):
-        qs = qs.filter(
-            relationship_intent=pref.preferred_relationship_intent
-        )
-
-    # -------- Marital status --------
-    if (
-        profile_has_field("marital_status")
-        and pref.preferred_marital_status
-        and pref.preferred_marital_status != "any"
-    ):
-        qs = qs.filter(
-            marital_status=pref.preferred_marital_status
-        )
-
-    # -------- Activity filter (User.last_login) --------
+    # -------- Activity preference (User.last_login) --------
     cutoff = timezone.now() - timedelta(days=7)
-    qs = qs.filter(user__last_login__gte=cutoff)
+    active_qs = qs.filter(user__last_login__gte=cutoff)
+    if active_qs.exists():
+        qs = active_qs
 
     # ---- deterministic rotation ----
     total = qs.count()
@@ -150,16 +149,18 @@ def score(user_profile, pref, candidate_profile):
             s += max(0, 20 - age_diff)
 
     # -------- Relationship intent --------
-    if (
-        profile_has_field("relationship_intent")
-        and pref.preferred_relationship_intent == candidate_profile.relationship_intent
+    if candidate_preference_matches(
+        candidate_profile,
+        "preferred_relationship_intent",
+        pref.preferred_relationship_intent,
     ):
         s += 30
 
     # -------- Marital status --------
-    if (
-        profile_has_field("marital_status")
-        and pref.preferred_marital_status == candidate_profile.marital_status
+    if candidate_preference_matches(
+        candidate_profile,
+        "preferred_marital_status",
+        pref.preferred_marital_status,
     ):
         s += 20
 
@@ -186,31 +187,30 @@ def score(user_profile, pref, candidate_profile):
 def mutual_score(user_profile, user_pref, candidate_profile):
     candidate_pref = getattr(candidate_profile.user, "match_preferences", None)
 
-    if not candidate_pref:
-        return 0
+    total_score = score(user_profile, user_pref, candidate_profile)
 
-    return (
-        score(user_profile, user_pref, candidate_profile)
-        + score(candidate_profile, candidate_pref, user_profile)
-    )
+    if candidate_pref:
+        total_score += score(candidate_profile, candidate_pref, user_profile)
+
+    return total_score
 
 
 # -----------------------------
 # Generate matches for one user
 # -----------------------------
-def generate_matches_for_user(user_profile, top_n=50):
+def generate_matches_for_user(user_profile, top_n=5):
     user = user_profile.user
     pref = getattr(user, "match_preferences", None)
 
     if not pref:
         return
 
-    candidates = get_candidates(user_profile, pref)
+    candidates = get_candidates(user_profile, pref, limit=max(top_n * 4, 20))
 
     scored = []
     for c in candidates:
         s = mutual_score(user_profile, pref, c)
-        if s > 0:
+        if s >= MIN_MATCH_SCORE:
             scored.append((c, s))
 
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -230,13 +230,14 @@ def generate_matches_for_user(user_profile, top_n=50):
                 )
             )
 
-        UserMatch.objects.bulk_create(bulk, ignore_conflicts=True)
+        if bulk:
+            UserMatch.objects.bulk_create(bulk, ignore_conflicts=True)
 
 
 # -----------------------------
 # Batch runner
 # -----------------------------
-def run(batch_size=200, top_n=50):
+def run(batch_size=200, top_n=5):
     print("Starting match generation...")
 
     #Clear existing matches
@@ -276,7 +277,7 @@ def run(batch_size=200, top_n=50):
 def main():
     parser = argparse.ArgumentParser(description="Generate stored UserMatch rows for public user profiles.")
     parser.add_argument("--batch-size", type=int, default=200, help="Number of profiles to process per batch.")
-    parser.add_argument("--top-n", type=int, default=50, help="Maximum matches to store per user.")
+    parser.add_argument("--top-n", type=int, default=5, help="Maximum matches to store per user.")
     args = parser.parse_args()
 
     run(batch_size=args.batch_size, top_n=args.top_n)
