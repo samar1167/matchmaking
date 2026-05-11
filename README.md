@@ -74,6 +74,15 @@ This is the step-by-step deployment path currently being followed for AWS.
 - Images are built locally and pushed to ECR.
 - ECS pulls images from ECR; source code does not need to live in AWS.
 
+Reusable rebuild and push flow:
+
+- build a fresh image locally
+- tag it with a versioned tag
+- tag it for the ECR repository
+- push it to ECR
+- create or select a new ECS task-definition revision that uses the new image tag
+- update or recreate the ECS service to use that revision
+
 ### 4. IAM Roles
 
 - ECS task execution role:
@@ -93,6 +102,10 @@ This is the step-by-step deployment path currently being followed for AWS.
 - Redis is hosted on Amazon ElastiCache.
 - RDS local testing required removing the Compose override that forced `DB_HOST=db`.
 - ElastiCache is intended for ECS runtime use; it is not expected to be directly reachable from a developer laptop.
+- For the current single-API-task public test phase, the API can run without `REDIS_URL` and fall back to the in-memory Channels layer.
+- When running a single API task, in-memory Channels is acceptable for real-time chat testing.
+- ElastiCache becomes important again when the API is scaled beyond one task or when cross-task WebSocket event delivery is required.
+- If Redis is not being used in the current phase, deleting the ElastiCache cluster is a valid cost-saving step.
 
 ### 6. ECS Cluster
 
@@ -152,6 +165,39 @@ After pushing:
 - register or select the latest API task-definition revision
 - recreate or update the ECS API service to use that revision
 
+### 8c. Rebuilding And Pushing Container Images
+
+Use immutable versioned tags for ECS deployments whenever possible.
+
+API example:
+
+- build:
+  - `docker build -f infra/docker/api.Dockerfile -t luster-api:2026-05-10-2 .`
+- tag for ECR:
+  - `docker tag luster-api:2026-05-10-2 634952168556.dkr.ecr.us-west-1.amazonaws.com/luster-api:2026-05-10-2`
+- push:
+  - `docker push 634952168556.dkr.ecr.us-west-1.amazonaws.com/luster-api:2026-05-10-2`
+
+Web example:
+
+- build:
+  - `docker build -f infra/docker/web.Dockerfile --build-arg NEXT_PUBLIC_API_BASE_URL=http://<public-api-base>/api --build-arg NEXT_PUBLIC_WS_BASE_URL=ws://<public-api-base>/ws -t luster-web:2026-05-10-2 .`
+- tag for ECR:
+  - `docker tag luster-web:2026-05-10-2 634952168556.dkr.ecr.us-west-1.amazonaws.com/luster-web:2026-05-10-2`
+- push:
+  - `docker push 634952168556.dkr.ecr.us-west-1.amazonaws.com/luster-web:2026-05-10-2`
+
+After any image push:
+
+- update the relevant ECS task definition to the new image tag
+- create a new task-definition revision
+- update or recreate the ECS service so ECS pulls the new image
+
+Notes:
+
+- do not rely on `latest` alone for ECS rollouts
+- use a new image tag whenever you want ECS to pick up a changed build reliably
+
 ### 8b. WSL Docker ECR Login Stability
 
 When using Docker Desktop through WSL, `docker login` and `docker push` may repeatedly fail with WSL or credential-helper errors even when AWS authentication itself is correct.
@@ -186,6 +232,9 @@ Notes:
 
 - The frontend ECS service will be attached after the API is verified in AWS.
 - The frontend image should be rebuilt with the final public API and WebSocket base URLs once the final ALB DNS name or domain is known.
+- The production web Dockerfile accepts build-time args for:
+  - `NEXT_PUBLIC_API_BASE_URL`
+  - `NEXT_PUBLIC_WS_BASE_URL`
 
 ## Profile Pictures on S3
 
@@ -263,11 +312,13 @@ When testing local containers against AWS-managed services such as RDS, the API 
 
 This section should stay at the bottom of the README and reflect the current non-production public test posture.
 
-- ECS API is currently being tested without an ALB.
-- The API task is being accessed directly through its public IP on port `8047`.
-- The ECS task security group currently allows public inbound access using `0.0.0.0/0` for the required test port.
+- The public test deployment is now being accessed through an internet-facing ALB.
+- Direct task public IP access should no longer be treated as the primary access path.
+- The ALB currently provides public HTTP access without SSL.
+- The ECS task security group should allow the app port only from the ALB security group.
 - `ALLOWED_HOSTS=*` is acceptable only as a temporary live-test setting.
 - SSL/HTTPS is not enabled yet.
+- The current public-test deployment can run with the in-memory Django Channels layer instead of Redis because only one API task is in use.
 
 ## Before Production
 
