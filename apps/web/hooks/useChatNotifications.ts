@@ -50,10 +50,15 @@ const toUnreadByConnection = (conversations: ChatConversation[]) => {
 };
 
 export function useChatTotalUnreadCount() {
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const token = useAuthStore((state) => state.token);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
 
   useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
     if (!token) {
       setTotalUnreadCount(0);
       return;
@@ -74,10 +79,10 @@ export function useChatTotalUnreadCount() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [hasHydrated, token]);
 
   useEffect(() => {
-    if (!token || typeof WebSocket === "undefined") {
+    if (!hasHydrated || !token || typeof WebSocket === "undefined") {
       return;
     }
 
@@ -101,12 +106,13 @@ export function useChatTotalUnreadCount() {
     return () => {
       socket.close();
     };
-  }, [token]);
+  }, [hasHydrated, token]);
 
   return totalUnreadCount;
 }
 
 export function useChatConversationUnreadCounts() {
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const token = useAuthStore((state) => state.token);
   const [unreadByConnection, setUnreadByConnection] = useState<Map<number, number>>(
     () => new Map(),
@@ -121,6 +127,10 @@ export function useChatConversationUnreadCounts() {
   }, [connectionByConversation]);
 
   useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
     if (!token) {
       setUnreadByConnection(new Map());
       setConnectionByConversation(new Map());
@@ -149,10 +159,10 @@ export function useChatConversationUnreadCounts() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [hasHydrated, token]);
 
   useEffect(() => {
-    if (!token || typeof WebSocket === "undefined") {
+    if (!hasHydrated || !token || typeof WebSocket === "undefined") {
       return;
     }
 
@@ -202,7 +212,7 @@ export function useChatConversationUnreadCounts() {
     return () => {
       socket.close();
     };
-  }, [token]);
+  }, [hasHydrated, token]);
 
   const getUnreadForConnection = (connectionId: number | string) =>
     unreadByConnection.get(Number(connectionId)) ?? 0;

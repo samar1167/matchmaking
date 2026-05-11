@@ -52,6 +52,7 @@ function BellIcon() {
 export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const clearSession = useAuthStore((state) => state.clearSession);
@@ -60,6 +61,10 @@ export function AppHeader() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
     if (!token) {
       setProfileFirstName(null);
       return;
@@ -95,7 +100,7 @@ export function AppHeader() {
     return () => {
       cancelled = true;
     };
-  }, [token, user?.first_name]);
+  }, [hasHydrated, token, user?.first_name]);
 
   const displayName = useMemo(() => {
     if (profileFirstName) {

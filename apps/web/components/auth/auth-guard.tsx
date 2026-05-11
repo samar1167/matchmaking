@@ -12,6 +12,11 @@ const publicRoutes = new Set([
   "/forgot-password",
   "/reset-password",
   "/verify-email",
+  "/about-us",
+  "/how-it-works",
+  "/privacy-policy",
+  "/terms-of-service",
+  "/contact-us",
 ]);
 
 export function AuthGuard({ children }: { children: ReactNode }) {
