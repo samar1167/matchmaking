@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { GooglePlaceInput } from "@/components/ui/google-place-input";
 import { Input, SelectInput } from "@/components/ui/input";
 import type {
   CreatePrivatePersonRequest,
@@ -15,6 +16,7 @@ export interface PrivatePersonFormValues {
   place_of_birth: string;
   latitude: string;
   longitude: string;
+  timezone: string;
 }
 
 interface PrivatePersonFormProps {
@@ -43,6 +45,7 @@ const emptyValues: PrivatePersonFormValues = {
   place_of_birth: "",
   latitude: "",
   longitude: "",
+  timezone: "",
 };
 
 export const mapPrivatePersonToFormValues = (
@@ -57,7 +60,21 @@ export const mapPrivatePersonToFormValues = (
     typeof privatePerson.latitude === "number" ? String(privatePerson.latitude) : "",
   longitude:
     typeof privatePerson.longitude === "number" ? String(privatePerson.longitude) : "",
+  timezone: privatePerson.timezone ?? "",
 });
+
+const formatUtcOffsetTimezone = (offsetMinutes: number | undefined) => {
+  if (typeof offsetMinutes !== "number" || !Number.isFinite(offsetMinutes)) {
+    return "";
+  }
+
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const hours = Math.floor(absoluteOffset / 60).toString().padStart(2, "0");
+  const minutes = (absoluteOffset % 60).toString().padStart(2, "0");
+
+  return `UTC${sign}${hours}:${minutes}`;
+};
 
 const validatePrivatePersonForm = (
   values: PrivatePersonFormValues,
@@ -120,6 +137,52 @@ export function PrivatePersonForm({
     }));
   };
 
+  const handlePlaceOfBirthChange = (value: string) => {
+    setValues((current) => ({
+      ...current,
+      place_of_birth: value,
+      latitude: "",
+      longitude: "",
+      timezone: "",
+    }));
+
+    setErrors((current) => ({
+      ...current,
+      place_of_birth: undefined,
+      latitude: undefined,
+      longitude: undefined,
+    }));
+  };
+
+  const handlePlaceOfBirthSelect = ({
+    latitude,
+    longitude,
+    place,
+    utcOffsetMinutes,
+  }: {
+    latitude?: number;
+    longitude?: number;
+    place: string;
+    utcOffsetMinutes?: number;
+  }) => {
+    setValues((current) => ({
+      ...current,
+      place_of_birth: place,
+      latitude:
+        typeof latitude === "number" && Number.isFinite(latitude) ? String(latitude) : "",
+      longitude:
+        typeof longitude === "number" && Number.isFinite(longitude) ? String(longitude) : "",
+      timezone: formatUtcOffsetTimezone(utcOffsetMinutes),
+    }));
+
+    setErrors((current) => ({
+      ...current,
+      place_of_birth: undefined,
+      latitude: undefined,
+      longitude: undefined,
+    }));
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -139,6 +202,7 @@ export function PrivatePersonForm({
         place_of_birth: values.place_of_birth.trim(),
         latitude: values.latitude ? Number(values.latitude) : undefined,
         longitude: values.longitude ? Number(values.longitude) : undefined,
+        timezone: values.timezone.trim() || undefined,
       });
 
       if (mode === "create") {
@@ -179,48 +243,45 @@ export function PrivatePersonForm({
         />
       </div>
 
-      <Input
+      <SelectInput
+        label="Gender"
+        options={genderChoices}
+        placeholder="Select gender"
+        value={values.gender}
+        onChange={(event) => handleChange("gender", event.target.value)}
+        error={errors.gender}
+      />
+
+      <GooglePlaceInput
         label="Place of Birth"
         placeholder="City, region, country"
         value={values.place_of_birth}
-        onChange={(event) => handleChange("place_of_birth", event.target.value)}
+        onChange={handlePlaceOfBirthChange}
+        onPlaceSelect={handlePlaceOfBirthSelect}
         error={errors.place_of_birth}
       />
 
-      {mode === "edit" ? (
-        <>
-          <SelectInput
-            label="Gender"
-            options={genderChoices}
-            placeholder="Select gender"
-            value={values.gender}
-            onChange={(event) => handleChange("gender", event.target.value)}
-            error={errors.gender}
-          />
+      <div className="grid gap-5 md:grid-cols-2">
+        <Input
+          label="Latitude"
+          type="number"
+          step="any"
+          placeholder="Enter latitude"
+          value={values.latitude}
+          onChange={(event) => handleChange("latitude", event.target.value)}
+          error={errors.latitude}
+        />
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <Input
-              label="Latitude"
-              type="number"
-              step="any"
-              placeholder="Enter latitude"
-              value={values.latitude}
-              onChange={(event) => handleChange("latitude", event.target.value)}
-              error={errors.latitude}
-            />
-
-            <Input
-              label="Longitude"
-              type="number"
-              step="any"
-              placeholder="Enter longitude"
-              value={values.longitude}
-              onChange={(event) => handleChange("longitude", event.target.value)}
-              error={errors.longitude}
-            />
-          </div>
-        </>
-      ) : null}
+        <Input
+          label="Longitude"
+          type="number"
+          step="any"
+          placeholder="Enter longitude"
+          value={values.longitude}
+          onChange={(event) => handleChange("longitude", event.target.value)}
+          error={errors.longitude}
+        />
+      </div>
 
       <div className="flex flex-wrap gap-3">
         <button

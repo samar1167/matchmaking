@@ -15,6 +15,7 @@ Combined monorepo for the matchmaking backend and frontend.
    - `cp .env.example .env` for shared compose values
    - `cp apps/api/.env.example apps/api/.env`
    - create or adjust `apps/web/.env`
+   - set `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in the env used for the web app build if you want Google place lookup on the profile page
 2. Start the stack:
    - `docker compose --env-file .env -f compose.yml -f compose.dev.yml up --build`
 
@@ -181,7 +182,8 @@ API example:
 Web example:
 
 - build:
-  - `docker build -f infra/docker/web.Dockerfile --build-arg NEXT_PUBLIC_API_BASE_URL=http://<public-api-base>/api --build-arg NEXT_PUBLIC_WS_BASE_URL=ws://<public-api-base>/ws -t luster-web:2026-05-10-2 .`
+- `docker build -f infra/docker/web.Dockerfile --build-arg NEXT_PUBLIC_API_BASE_URL=http://<public-api-base>/api --build-arg NEXT_PUBLIC_WS_BASE_URL=ws://<public-api-base>/ws -t luster-web:2026-05-10-2 .`
+- `docker build -f infra/docker/web.Dockerfile --build-arg NEXT_PUBLIC_API_BASE_URL=http://<public-api-base>/api --build-arg NEXT_PUBLIC_WS_BASE_URL=ws://<public-api-base>/ws --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<google-maps-browser-key> -t luster-web:2026-05-10-2 .`
 - tag for ECR:
   - `docker tag luster-web:2026-05-10-2 634952168556.dkr.ecr.us-west-1.amazonaws.com/luster-web:2026-05-10-2`
 - push:

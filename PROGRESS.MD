@@ -256,6 +256,7 @@ Each item should later be moved to either completed, replaced, or intentionally 
 - autoscaling is intentionally not enabled in the first phase
 - health checks are currently temporary and may need stronger app-specific endpoints
 - frontend production attachment is deferred until API validation completes
+- RDS should remain Single-AZ during the current validation and early rollout phase unless a clear reliability trigger justifies Multi-AZ cost
 
 ### Security And Secrets
 
@@ -302,6 +303,25 @@ This register tracks work that may be easy to postpone now but should be revisit
 - [ ] monitoring and alerting baseline
 - [ ] backup/recovery review for production database
 
+### Current Cost-Control Decisions
+
+- [x] keep the current RDS strategy at `Single-AZ` during validation and early rollout
+- [x] treat `Multi-AZ` as a later production-hardening upgrade rather than a current default
+- [ ] confirm the current AWS DB deployment mode in the live environment
+- [ ] take a manual DB snapshot before any availability-mode change
+- [ ] set deliberate automated backup retention for the live DB
+- [ ] enable deletion protection on the live DB if not already enabled
+- [ ] run at least one restore test from snapshot or point-in-time recovery
+
+### RDS Upgrade Triggers
+
+Move from `Single-AZ` to `Multi-AZ` when one or more of these becomes true:
+
+- [ ] mobile launch makes backend uptime materially more important
+- [ ] paying users depend on the system for core usage
+- [ ] acceptable recovery time can no longer tolerate a Single-AZ outage
+- [ ] the platform is being treated as production-hardened rather than validation-stage
+
 ### Medium Priority Gaps
 
 - [ ] tighten dependency pinning policy
@@ -335,6 +355,7 @@ This section is intentionally for low-visibility items that often get missed unt
 - [ ] review whether local-only assumptions still exist in code or docs
 - [ ] verify all user-facing links and callback URLs for production domains
 - [ ] create app release checklist for Android and iOS once mobile starts
+- [ ] confirm RDS backup window, retention period, and restore process in the live AWS environment
 
 ## Suggested Next Steps
 
@@ -347,6 +368,7 @@ These are the most sensible next planning moves based on the project’s current
 - [x] define the first mobile release scope
 - [ ] stabilize AWS API deployment path
 - [ ] turn the production gap register into a phased hardening plan
+- [ ] verify the live RDS setup and apply the Single-AZ backup-hardening checklist
 
 ### Next Mobile Planning Actions
 
@@ -379,6 +401,7 @@ Use this section to append meaningful updates over time.
 - locked Android-first release order with iOS following after
 - locked v1 mobile scope including auth, profile, photo upload, matchmaking, connections, chat, private persons, payments, and push notifications
 - recorded that mobile payments must follow native app-store compliant flows
+- recorded the current cost-control decision to keep RDS Single-AZ for now and delay Multi-AZ until production-hardening triggers are met
 
 ## How To Use This File
 
