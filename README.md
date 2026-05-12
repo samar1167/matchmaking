@@ -224,6 +224,13 @@ Recommended minimal shape:
 }
 ```
 
+If auth failing because of profile mismatch (you may have multiple AWS profiles on your machine):
+- check current profile `aws configure list`
+- Set the profile you intend to use `export AWS_PROFILE=<correct-profile>`
+- Check that correct profile is now active `aws sts get-caller-identity`
+- reauth Docker again with this profile `aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin 634952168556.dkr.ecr.us-west-1.amazonaws.com`
+- Go ahead with Docker push step above
+
 Notes:
 
 - ECR login tokens still expire and must be refreshed periodically
@@ -237,6 +244,7 @@ Notes:
 - The production web Dockerfile accepts build-time args for:
   - `NEXT_PUBLIC_API_BASE_URL`
   - `NEXT_PUBLIC_WS_BASE_URL`
+  - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
 
 ## Profile Pictures on S3
 
